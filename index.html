@@ -553,12 +553,31 @@ async function renderAdminContent(tab) {
       const msg = document.getElementById('adminMsg');
       if (!nick) { msg.textContent = 'Enter a nickname for the new student.'; return; }
       msg.textContent = 'Generating…';
-      const { count } = await sb.from('traders').select('*', { count: 'exact', head: true });
-      const nextNum = (count || 0) + 1;
-      const newCode = 'CR8-' + String(nextNum).padStart(3, '0');
+
+      function generateRandomCode(length) {
+        // Random bytes -> base64 -> strip non-alphanumeric -> uppercase -> trim to length
+        const bytes = new Uint8Array(length + 8); // extra bytes since base64/cleanup shrinks it
+        crypto.getRandomValues(bytes);
+        let b64 = btoa(String.fromCharCode(...bytes));
+        let clean = b64.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        while (clean.length < length) {
+          crypto.getRandomValues(bytes);
+          clean += btoa(String.fromCharCode(...bytes)).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        }
+        return clean.slice(0, length);
+      }
+
+      let newCode, exists = true, attempts = 0;
+      while (exists && attempts < 8) {
+        newCode = 'CR8-' + generateRandomCode(15);
+        const { data: existing } = await sb.from('traders').select('code').eq('code', newCode).maybeSingle();
+        exists = !!existing;
+        attempts++;
+      }
+
       const { error } = await sb.rpc('create_trader', { p_code: newCode, p_nickname: nick, p_admin_password: state.adminPass });
       if (error) { msg.innerHTML = `Could not create code. Try unlocking the admin panel again.`; return; }
-      msg.innerHTML = `Created! Give this to your student:<br><span style="font-family:var(--font-mono);color:var(--gold);font-size:18px;">${esc(newCode)}</span>`;
+      msg.innerHTML = `Created! Give this to your student:<br><span style="font-family:var(--font-mono);color:var(--gold);font-size:16px;word-break:break-all;">${esc(newCode)}</span>`;
       document.getElementById('adminNick').value = '';
     };
     return;
