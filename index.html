@@ -1518,11 +1518,11 @@ function renderMine(container, trades) {
     return;
   }
   container.innerHTML = `<div class="fade-in" style="display:flex;flex-direction:column;gap:10px;">` +
-    trades.map(t => `
-      <div class="card" style="display:flex;gap:12px;align-items:flex-start;">
+    trades.map((t, idx) => `
+      <div class="card trade-card" data-trade-idx="${idx}" style="display:flex;gap:12px;align-items:flex-start;cursor:pointer;">
         ${t.screenshot_url
           ? `<img src="${t.screenshot_url}" style="width:64px;height:64px;object-fit:cover;border-radius:var(--radius);flex-shrink:0;" />`
-          : `<div style="width:64px;height:64px;border-radius:var(--radius);background:var(--surface-2);flex-shrink:0;"></div>`}
+          : `<div style="width:64px;height:64px;border-radius:var(--radius);background:var(--surface-2);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:20px;">📷</div>`}
         <div style="flex:1;min-width:0;">
           <div style="display:flex;justify-content:space-between;gap:8px;">
             <span style="font-family:var(--font-mono);font-size:13px;">${t.trade_date} ${t.trade_time} &middot; ${esc(t.instrument || '-')}</span>
@@ -1534,10 +1534,81 @@ function renderMine(container, trades) {
             <span class="pill">${esc(t.strategy || '-')}</span>
             <span class="pill">RR ${esc(t.risk_reward || '-')}</span>
           </div>
-          ${t.notes ? `<div style="font-size:13px;color:var(--text-secondary);">${esc(t.notes)}</div>` : ''}
+          ${t.notes ? `<div style="font-size:13px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.notes)}</div>` : ''}
         </div>
       </div>`).join('') +
     `</div>`;
+
+  container.querySelectorAll('.trade-card').forEach(card => {
+    card.onclick = () => {
+      const idx = parseInt(card.dataset.tradeIdx, 10);
+      openTradeDetail(trades[idx]);
+    };
+  });
+}
+
+function openTradeDetail(t) {
+  const overlay = document.createElement('div');
+  overlay.id = 'trade-detail-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn 0.25s ease-out;';
+
+  const resultColor = t.result === 'win' ? 'var(--text-success)' : 'var(--text-danger)';
+  overlay.innerHTML = `
+    <div class="card" style="max-width:560px;width:100%;max-height:90vh;overflow-y:auto;animation:tierPop 0.4s cubic-bezier(0.34,1.56,0.64,1);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+        <div>
+          <div class="brand-mark">TRADE DETAIL</div>
+          <h2 style="margin-top:2px;font-size:20px;">${esc(t.instrument || 'Trade')}</h2>
+          <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);margin-top:2px;">${t.trade_date} &middot; ${t.trade_time}</div>
+        </div>
+        <button id="closeTradeDetail" style="padding:6px 12px;">✕</button>
+      </div>
+
+      ${t.screenshot_url
+        ? `<img src="${t.screenshot_url}" style="width:100%;border-radius:var(--radius);border:0.5px solid var(--border);margin-bottom:16px;" />`
+        : `<div style="width:100%;height:120px;border-radius:var(--radius);background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--text-muted);margin-bottom:16px;">No screenshot uploaded</div>`}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div class="card" style="background:var(--surface-2);">
+          <div style="font-size:11px;color:var(--text-muted);">Outcome</div>
+          <div style="font-weight:500;color:${resultColor};text-transform:uppercase;">${t.result}</div>
+        </div>
+        <div class="card" style="background:var(--surface-2);">
+          <div style="font-size:11px;color:var(--text-muted);">P&L</div>
+          <div style="font-family:var(--font-mono);font-weight:500;color:${t.pnl_pct >= 0 ? 'var(--text-success)' : 'var(--text-danger)'};">${t.pnl_pct >= 0 ? '+' : ''}${t.pnl_pct}%</div>
+        </div>
+        <div class="card" style="background:var(--surface-2);">
+          <div style="font-size:11px;color:var(--text-muted);">Strategy</div>
+          <div style="font-weight:500;">${esc(t.strategy || '—')}</div>
+        </div>
+        <div class="card" style="background:var(--surface-2);">
+          <div style="font-size:11px;color:var(--text-muted);">Risk : Reward</div>
+          <div style="font-family:var(--font-mono);font-weight:500;">${esc(t.risk_reward || '—')}</div>
+        </div>
+        <div class="card" style="background:var(--surface-2);">
+          <div style="font-size:11px;color:var(--text-muted);">Discipline</div>
+          <div style="font-weight:500;">${t.emotional ? 'Got emotional' : 'Followed rules'}</div>
+        </div>
+        <div class="card" style="background:var(--surface-2);">
+          <div style="font-size:11px;color:var(--text-muted);">Instrument</div>
+          <div style="font-weight:500;">${esc(t.instrument || '—')}</div>
+        </div>
+      </div>
+
+      ${t.notes ? `
+        <div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Notes</div>
+          <div style="font-size:14px;color:var(--text-primary);line-height:1.6;background:var(--surface-2);padding:12px;border-radius:var(--radius);">${esc(t.notes)}</div>
+        </div>` : ''}
+    </div>`;
+
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  document.getElementById('closeTradeDetail').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  // Allow Escape key to close
+  const escHandler = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escHandler); } };
+  document.addEventListener('keydown', escHandler);
 }
 
 function renderRiskCalc(container) {
