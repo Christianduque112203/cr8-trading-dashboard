@@ -2220,6 +2220,61 @@ function renderCharts(container, trades) {
     .sort((a, b) => b.count - a.count);
   const totalViolations = Object.values(violationCounts).reduce((a, b) => a + b, 0);
 
+  // ===== Hidden Edge Detector =====
+  // Finds conditions where the trader's win rate beats their baseline by a meaningful margin.
+  const baseWins = trades.filter(t => t.result === 'win').length;
+  const baseWinRate = trades.length ? (baseWins / trades.length) * 100 : 0;
+  const MIN_SAMPLE = 4;        // need at least this many trades in a bucket
+  const EDGE_MARGIN = 12;      // must beat baseline by at least this many points
+
+  function sessionForHourEdge(h) {
+    if (h >= 0 && h < 9) return 'Asian session';
+    if (h >= 7 && h < 12) return 'London session';
+    if (h >= 12 && h < 16) return 'London/NY overlap';
+    if (h >= 16 && h < 21) return 'NY session';
+    return 'Off-hours';
+  }
+  const dayNamesEdge = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  // Build candidate buckets across multiple dimensions
+  const buckets = {}; // key -> { label, dimension, trades: [] }
+  function addToBucket(key, label, dimension, t) {
+    if (!buckets[key]) buckets[key] = { label, dimension, wins: 0, total: 0 };
+    buckets[key].total++;
+    if (t.result === 'win') buckets[key].wins++;
+  }
+
+  trades.forEach(t => {
+    if (t.instrument) addToBucket('inst:' + t.instrument.toUpperCase(), `Trading ${t.instrument.toUpperCase()}`, 'Instrument', t);
+    if (t.strategy) addToBucket('strat:' + t.strategy.toUpperCase(), `${t.strategy} setups`, 'Strategy', t);
+    const hour = parseInt(String(t.trade_time || '').split(':')[0], 10);
+    if (!isNaN(hour)) { const s = sessionForHourEdge(hour); addToBucket('sess:' + s, s, 'Session', t); }
+    const d = new Date(t.trade_date + 'T00:00:00');
+    if (!isNaN(d)) { const dn = dayNamesEdge[d.getDay()]; addToBucket('day:' + dn, `On ${dn}s`, 'Day', t); }
+    // Risk:reward bracket
+    const m = String(t.risk_reward || '').match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
+    if (m) {
+      const ratio = parseFloat(m[2]) / parseFloat(m[1]);
+      if (ratio >= 2.5) addToBucket('rr:high', 'RR above 2.5', 'Risk:Reward', t);
+      else if (ratio >= 1.5) addToBucket('rr:mid', 'RR 1.5 to 2.5', 'Risk:Reward', t);
+    }
+    // Discipline
+    if (!t.emotional) addToBucket('disc:yes', 'When following your rules', 'Discipline', t);
+  });
+
+  const edges = Object.values(buckets)
+    .map(b => ({ ...b, winRate: Math.round((b.wins / b.total) * 100) }))
+    .filter(b => b.total >= MIN_SAMPLE && (b.winRate - baseWinRate) >= EDGE_MARGIN)
+    .sort((a, b) => b.winRate - a.winRate)
+    .slice(0, 6);
+
+  // Also find a "leak" — the condition where they perform worst
+  const leaks = Object.values(buckets)
+    .map(b => ({ ...b, winRate: Math.round((b.wins / b.total) * 100) }))
+    .filter(b => b.total >= MIN_SAMPLE && (baseWinRate - b.winRate) >= EDGE_MARGIN)
+    .sort((a, b) => a.winRate - b.winRate)
+    .slice(0, 3);
+
   // Build trade calendar heatmap — last 12 weeks, GitHub-style
   const byDate = {};
   trades.forEach(t => {
@@ -2363,6 +2418,35 @@ function renderCharts(container, trades) {
             </div>`).join('')}
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:12px;">${totalViolations} total violation${totalViolations !== 1 ? 's' : ''} across ${trades.length} trades.</div>`}
+      </div>
+
+      <div class="card" style="border-color:var(--gold);background:linear-gradient(135deg, rgba(212,175,55,0.06), var(--surface-1));">
+        <div style="font-weight:500;margin-bottom:4px;">🔍 Hidden Edge Detector</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Conditions where you beat your ${Math.round(baseWinRate)}% baseline win rate. Your real edge.</div>
+        ${trades.length < 8 ? `<p class="muted" style="font-size:13px;">Log at least 8 trades (with instrument, time, strategy & RR filled in) and your edges will start surfacing here.</p>` : edges.length === 0 ? `<p class="muted" style="font-size:13px;">No standout edge detected yet. Keep logging detailed trades — patterns emerge over time.</p>` : `
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          ${edges.map(e => `
+            <div style="display:flex;align-items:center;gap:12px;background:var(--surface-2);border-radius:var(--radius);padding:10px 12px;">
+              <div style="font-family:var(--font-mono);font-weight:500;font-size:20px;color:var(--text-success);width:52px;flex-shrink:0;">${e.winRate}%</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:14px;font-weight:500;">${esc(e.label)}</div>
+                <div style="font-size:11px;color:var(--text-muted);">${e.dimension} &middot; ${e.total} trades &middot; +${Math.round(e.winRate - baseWinRate)} pts vs baseline</div>
+              </div>
+            </div>`).join('')}
+        </div>`}
+        ${leaks.length ? `
+          <div style="margin-top:16px;">
+            <div style="font-size:12px;color:var(--text-danger);font-weight:500;margin-bottom:8px;">⚠ Where you leak</div>
+            ${leaks.map(l => `
+              <div style="display:flex;align-items:center;gap:12px;background:var(--bg-danger);border-radius:var(--radius);padding:8px 12px;margin-bottom:6px;">
+                <div style="font-family:var(--font-mono);font-weight:500;font-size:16px;color:var(--text-danger);width:52px;flex-shrink:0;">${l.winRate}%</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13px;">${esc(l.label)}</div>
+                  <div style="font-size:11px;color:var(--text-muted);">${l.dimension} &middot; ${l.total} trades &middot; ${Math.round(baseWinRate - l.winRate)} pts below baseline</div>
+                </div>
+              </div>`).join('')}
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Consider trading these conditions less, or refining your approach to them.</div>
+          </div>` : ''}
       </div>
 
     </div>`;
