@@ -210,6 +210,26 @@
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(0,0,0,0.3);
   }
+  /* 3D tilt-enabled cards */
+  .tilt-card {
+    transform-style: preserve-3d;
+    transition: transform 0.12s ease-out, box-shadow 0.2s ease, border-color 0.2s ease;
+    will-change: transform;
+    position: relative;
+  }
+  .tilt-card.tilting {
+    box-shadow: 0 14px 40px rgba(0,0,0,0.45), 0 0 22px rgba(212,175,55,0.12);
+    border-color: rgba(212,175,55,0.4);
+  }
+  .tilt-card .tilt-glare {
+    position: absolute; inset: 0;
+    border-radius: var(--radius);
+    pointer-events: none;
+    background: radial-gradient(circle at var(--glare-x, 50%) var(--glare-y, 0%), rgba(212,175,55,0.16), transparent 55%);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .tilt-card.tilting .tilt-glare { opacity: 1; }
   .muted { color: var(--text-muted); }
   .tabbtn { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 8px 4px; transition: border-color 0.22s ease, color 0.22s ease; }
   .tabbtn.active { border-bottom-color: var(--gold); font-weight: 500; color: var(--gold); }
@@ -1410,7 +1430,7 @@ function metricCard(label, value, color, standout) {
   if (color === 'green') style = 'color:var(--text-success);';
   if (color === 'red') style = 'color:var(--text-danger);';
   const border = standout ? 'border-color:var(--gold);' : '';
-  return `<div class="card" style="${border}">
+  return `<div class="card tilt-card" style="${border}">
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">${label}</div>
     <div class="value-pop" style="font-size:24px;font-weight:500;font-family:var(--font-mono);${style}">${value}</div>
   </div>`;
@@ -1997,7 +2017,7 @@ function renderPersonalBests(container, trades) {
       <p class="muted" style="font-size:13px;margin-bottom:16px;">Your personal records, tracked since your very first trade.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
         ${cards.map(c => `
-          <div class="card">
+          <div class="card tilt-card">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
               <div style="font-size:12px;color:var(--text-secondary);">${c.label}</div>
               <div style="font-size:18px;">${c.icon}</div>
@@ -2017,7 +2037,7 @@ function renderBadges(container, allTrades) {
       <p class="muted" style="font-size:13px;margin-bottom:14px;">${unlockedCount} of ${badges.length} badges unlocked.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px;">
         ${badges.map(b => `
-          <div class="badge-card ${b.unlocked ? 'unlocked' : 'locked'}">
+          <div class="badge-card tilt-card ${b.unlocked ? 'unlocked' : 'locked'}">
             <div class="badge-icon">${b.icon}</div>
             <div style="font-weight:500;font-size:14px;">${esc(b.name)}</div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${esc(b.desc)}</div>
@@ -2279,6 +2299,54 @@ function setupBackgroundFX() {
     fx.appendChild(el);
   }
 }
+
+// Global 3D tilt effect — applies to any .card with the .tilt-card class.
+// Cards subtly rotate toward the cursor with a gold glare highlight.
+(function setupCardTilt() {
+  const MAX_TILT = 7; // degrees
+  let activeCard = null;
+
+  function ensureGlare(card) {
+    if (!card.querySelector('.tilt-glare')) {
+      const glare = document.createElement('div');
+      glare.className = 'tilt-glare';
+      card.appendChild(glare);
+    }
+  }
+
+  document.addEventListener('mousemove', (e) => {
+    const card = e.target.closest('.tilt-card');
+    if (!card) {
+      if (activeCard) {
+        activeCard.style.transform = '';
+        activeCard.classList.remove('tilting');
+        activeCard = null;
+      }
+      return;
+    }
+    if (card !== activeCard) {
+      if (activeCard) { activeCard.style.transform = ''; activeCard.classList.remove('tilting'); }
+      activeCard = card;
+      ensureGlare(card);
+      card.classList.add('tilting');
+    }
+    const rect = card.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width;   // 0..1
+    const py = (e.clientY - rect.top) / rect.height;   // 0..1
+    const rotateY = (px - 0.5) * 2 * MAX_TILT;
+    const rotateX = -(py - 0.5) * 2 * MAX_TILT;
+    card.style.transform = `perspective(800px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) translateZ(0)`;
+    const glare = card.querySelector('.tilt-glare');
+    if (glare) {
+      glare.style.setProperty('--glare-x', (px * 100).toFixed(1) + '%');
+      glare.style.setProperty('--glare-y', (py * 100).toFixed(1) + '%');
+    }
+  });
+
+  document.addEventListener('mouseleave', () => {
+    if (activeCard) { activeCard.style.transform = ''; activeCard.classList.remove('tilting'); activeCard = null; }
+  }, true);
+})();
 
 // Global ripple effect on every button click — works automatically for buttons
 // added later too, since it's delegated to the document rather than bound per-button.
