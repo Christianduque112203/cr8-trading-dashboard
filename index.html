@@ -767,7 +767,8 @@ let state = {
   emotionalVal: false,
   adminPass: null,
   slideDir: null,
-  setupScore: 0
+  setupScore: 0,
+  violations: []
 };
 
 const app = document.getElementById('app');
@@ -1532,6 +1533,18 @@ function renderLogForm(container) {
         <button id="emotionalBtn" style="flex:1;">Got emotional</button>
       </div>
 
+      <label>Rule violations</label>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Be honest — check any rules you broke on this trade.</div>
+      <div id="violationList">
+        <div class="prob-check" data-violation="Entered early"><span class="box">✓</span><span style="font-size:13px;">Entered early</span></div>
+        <div class="prob-check" data-violation="Moved stop loss"><span class="box">✓</span><span style="font-size:13px;">Moved stop loss</span></div>
+        <div class="prob-check" data-violation="Over leveraged"><span class="box">✓</span><span style="font-size:13px;">Over leveraged</span></div>
+        <div class="prob-check" data-violation="Revenge trade"><span class="box">✓</span><span style="font-size:13px;">Revenge trade</span></div>
+        <div class="prob-check" data-violation="No clear setup"><span class="box">✓</span><span style="font-size:13px;">No clear setup</span></div>
+        <div class="prob-check" data-violation="Ignored higher timeframe"><span class="box">✓</span><span style="font-size:13px;">Ignored higher timeframe</span></div>
+      </div>
+      <div style="margin-bottom:16px;"></div>
+
       <label>Setup quality checklist</label>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">How well did this setup match your plan? Check what applied.</div>
       <div id="probChecklist">
@@ -1569,6 +1582,19 @@ function renderLogForm(container) {
 
   // Probability meter checklist
   state.setupScore = 0;
+  state.violations = [];
+  const violationChecks = container.querySelectorAll('[data-violation]');
+  violationChecks.forEach(v => {
+    v.onclick = () => {
+      v.classList.toggle('checked');
+      const rule = v.dataset.violation;
+      if (v.classList.contains('checked')) {
+        if (!state.violations.includes(rule)) state.violations.push(rule);
+      } else {
+        state.violations = state.violations.filter(r => r !== rule);
+      }
+    };
+  });
   const checks = container.querySelectorAll('[data-check]');
   function updateProb() {
     const checked = container.querySelectorAll('[data-check].checked').length;
@@ -1619,7 +1645,8 @@ function renderLogForm(container) {
       emotional: state.emotionalVal,
       notes: document.getElementById('notesInput').value || null,
       screenshot_url: screenshotUrl,
-      setup_score: state.setupScore != null ? state.setupScore : null
+      setup_score: state.setupScore != null ? state.setupScore : null,
+      rule_violations: state.violations || []
     };
 
     const { error: insertErr } = await sb.from('trades').insert(payload);
@@ -1724,6 +1751,13 @@ function openTradeDetail(t) {
         <div>
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Notes</div>
           <div style="font-size:14px;color:var(--text-primary);line-height:1.6;background:var(--surface-2);padding:12px;border-radius:var(--radius);">${esc(t.notes)}</div>
+        </div>` : ''}
+      ${(t.rule_violations && t.rule_violations.length) ? `
+        <div style="margin-top:16px;">
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">Rule violations</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${t.rule_violations.map(v => `<span class="pill" style="background:var(--bg-danger);color:var(--text-danger);">⚠ ${esc(v)}</span>`).join('')}
+          </div>
         </div>` : ''}
     </div>`;
 
@@ -1890,6 +1924,18 @@ function renderCharts(container, trades) {
     .map(([name, s]) => ({ name, winRate: Math.round((s.wins / s.total) * 100), count: s.total }))
     .sort((a, b) => b.winRate - a.winRate);
 
+  // Rule violation frequency
+  const violationCounts = {};
+  trades.forEach(t => {
+    (t.rule_violations || []).forEach(v => {
+      violationCounts[v] = (violationCounts[v] || 0) + 1;
+    });
+  });
+  const violationRows = Object.entries(violationCounts)
+    .map(([name, count]) => ({ name, count, pct: Math.round((count / trades.length) * 100) }))
+    .sort((a, b) => b.count - a.count);
+  const totalViolations = Object.values(violationCounts).reduce((a, b) => a + b, 0);
+
   // Build trade calendar heatmap — last 12 weeks, GitHub-style
   const byDate = {};
   trades.forEach(t => {
@@ -2014,6 +2060,25 @@ function renderCharts(container, trades) {
               </div>
             </div>`).join('')}
         </div>`}
+      </div>
+
+      <div class="card">
+        <div style="font-weight:500;margin-bottom:4px;">Rule Violations</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">How often you break each rule — awareness is the first fix</div>
+        ${violationRows.length === 0 ? `<p class="muted" style="font-size:13px;">No rule violations logged. Either flawless discipline or time to start being honest on the log. 💪</p>` : `
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          ${violationRows.map(v => `
+            <div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span style="font-size:13px;">⚠ ${esc(v.name)} <span style="color:var(--text-muted);font-size:11px;">(${v.count}\u00d7)</span></span>
+                <span style="font-family:var(--font-mono);font-weight:500;font-size:13px;color:${v.pct >= 25 ? 'var(--text-danger)' : v.pct >= 10 ? '#fbbf24' : 'var(--text-secondary)'};">${v.pct}%</span>
+              </div>
+              <div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;">
+                <div style="height:100%;width:${v.pct}%;background:linear-gradient(90deg, #7a2020, var(--text-danger));border-radius:4px;transition:width 0.6s ease;"></div>
+              </div>
+            </div>`).join('')}
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:12px;">${totalViolations} total violation${totalViolations !== 1 ? 's' : ''} across ${trades.length} trades.</div>`}
       </div>
 
     </div>`;
