@@ -168,6 +168,42 @@
   }
   .streak-card.hot { border-color: #f97316; background: linear-gradient(135deg, rgba(249,115,22,0.12), var(--surface-1)); }
   .streak-card.cold { border-color: #60a5fa; }
+
+  #tierup-overlay {
+    position: fixed; inset: 0; z-index: 999;
+    background: rgba(0,0,0,0.82);
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.3s ease-out;
+  }
+  #tierup-overlay .tierup-card {
+    text-align: center; padding: 2.5rem 2rem;
+    max-width: 360px;
+    animation: tierPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes tierPop {
+    0% { transform: scale(0.7); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .tierup-icon {
+    font-size: 64px;
+    animation: tierBounce 1.2s ease-in-out infinite;
+  }
+  @keyframes tierBounce {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-10px) scale(1.08); }
+  }
+  .confetti-piece {
+    position: fixed; top: -20px;
+    width: 8px; height: 14px;
+    opacity: 0.9;
+    animation-name: confettiFall;
+    animation-timing-function: linear;
+    z-index: 1000;
+  }
+  @keyframes confettiFall {
+    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(110vh) rotate(540deg); opacity: 0.3; }
+  }
   .badge-card {
     text-align: center; padding: 1.2rem 0.8rem;
     border-radius: var(--radius); border: 0.5px solid var(--border);
@@ -901,6 +937,19 @@ async function renderDashboard() {
   const streaks = computeStreaks(allTrades, state.currentCode);
   const myTier = computeTier(allTrades, state.currentCode);
 
+  // Detect tier-up since last visit (per trader code, stored locally)
+  const tierKey = 'cr8_last_tier_' + state.currentCode;
+  const lastSeenTier = localStorage.getItem(tierKey);
+  if (lastSeenTier && lastSeenTier !== myTier.name) {
+    const lastIndex = TIERS.findIndex(t => t.name === lastSeenTier);
+    const currentIndex = TIERS.findIndex(t => t.name === myTier.name);
+    if (currentIndex > lastIndex) {
+      // Defer until after render so the overlay mounts on top of the real DOM
+      setTimeout(() => showTierUpCelebration(myTier), 50);
+    }
+  }
+  localStorage.setItem(tierKey, myTier.name);
+
   // Fetch the latest mentor announcement, if any
   let announcementBanner = '';
   let latestAnnouncementId = null;
@@ -1534,6 +1583,44 @@ function renderLeaderboard(container, leaderboard) {
   container.querySelectorAll('.sortbtn').forEach(b => {
     b.onclick = () => { state.sortBy = b.dataset.sort; renderDashboard(); };
   });
+}
+
+function showTierUpCelebration(tier) {
+  const overlay = document.createElement('div');
+  overlay.id = 'tierup-overlay';
+  overlay.innerHTML = `
+    <div class="tierup-card">
+      <div class="tierup-icon">${tier.icon}</div>
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--gold);letter-spacing:0.15em;margin-top:16px;">RANK UP</div>
+      <h2 style="margin-top:6px;font-size:28px;">${esc(tier.name)}</h2>
+      <p style="color:var(--text-secondary);font-size:14px;margin-top:8px;">Your discipline and consistency just paid off. Keep building.</p>
+      <button id="tierupCloseBtn" style="margin-top:20px;padding:10px 28px;border:1px solid ${tier.color};color:${tier.color};">Let's go</button>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  // Confetti burst
+  const colors = ['#d4af37', '#f97316', '#4ade80', '#60a5fa', '#f87171', '#a78bfa'];
+  const confettiCount = 60;
+  const pieces = [];
+  for (let i = 0; i < confettiCount; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = (Math.random() * 100) + 'vw';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDuration = (2 + Math.random() * 1.5) + 's';
+    piece.style.animationDelay = (Math.random() * 0.6) + 's';
+    piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    document.body.appendChild(piece);
+    pieces.push(piece);
+  }
+
+  const cleanup = () => {
+    overlay.remove();
+    pieces.forEach(p => p.remove());
+  };
+  document.getElementById('tierupCloseBtn').onclick = cleanup;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
+  setTimeout(() => pieces.forEach(p => p.remove()), 4000);
 }
 
 function setupBackgroundFX() {
