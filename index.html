@@ -1148,9 +1148,72 @@ async function renderAdminContent(tab) {
             ${r.struggling ? `<div style="margin-top:10px;font-size:12px;padding:6px 10px;border-radius:var(--radius);background:rgba(251,191,36,0.1);color:#fbbf24;">⚠️ Needs attention — low discipline or win rate. Consider reaching out.</div>` : ''}
             ${r.recentTrades > r.prevTrades && r.prevTrades >= 0 ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">↑ ${r.recentTrades} trades this week vs ${r.prevTrades} last week</div>` : ''}
             ${r.prevTrades > r.recentTrades ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">↓ ${r.recentTrades} trades this week vs ${r.prevTrades} last week</div>` : ''}
+            ${r.total > 0 ? `<button class="admin-review-btn" data-code="${esc(r.trader.code)}" data-nick="${esc(r.trader.nickname)}" style="margin-top:12px;width:100%;font-size:13px;">Review ${r.trader.nickname.split(' ')[0]}'s trades</button>` : ''}
           </div>`).join('')}
       </div>
     </div>`;
+
+  content.querySelectorAll('.admin-review-btn').forEach(b => {
+    b.onclick = () => openAdminTradeReview(b.dataset.code, b.dataset.nick, trades);
+  });
+}
+
+function openAdminTradeReview(code, nick, allTrades) {
+  const studentTrades = (allTrades || [])
+    .filter(t => t.trader_code === code)
+    .sort((a, b) => (b.trade_date + b.trade_time).localeCompare(a.trade_date + a.trade_time));
+
+  const overlay = document.createElement('div');
+  overlay.id = 'admin-review-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn 0.25s ease-out;';
+
+  function rowHtml(t) {
+    return `
+      <div class="card" style="display:flex;gap:10px;align-items:center;" data-trade-row="${t.id}">
+        ${t.screenshot_url ? `<img src="${t.screenshot_url}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius);flex-shrink:0;" />` : `<div style="width:48px;height:48px;border-radius:var(--radius);background:var(--surface-2);flex-shrink:0;"></div>`}
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:var(--font-mono);font-size:12px;">${t.trade_date} &middot; ${esc(t.instrument || '-')} &middot; <span style="color:${t.pnl_pct >= 0 ? 'var(--text-success)' : 'var(--text-danger)'};">${t.pnl_pct >= 0 ? '+' : ''}${t.pnl_pct}%</span></div>
+          <div style="font-size:11px;color:var(--text-muted);">${t.result}${t.emotional ? ' · emotional' : ''}${(t.rule_violations && t.rule_violations.length) ? ' · ' + t.rule_violations.length + ' violation(s)' : ''}</div>
+        </div>
+        <button class="review-toggle" data-id="${t.id}" data-reviewed="${t.reviewed ? '1' : '0'}" style="font-size:12px;flex-shrink:0;${t.reviewed ? 'border-color:var(--gold);color:var(--gold);' : ''}">${t.reviewed ? '✓ Reviewed' : 'Mark reviewed'}</button>
+      </div>`;
+  }
+
+  overlay.innerHTML = `
+    <div class="card" style="max-width:560px;width:100%;max-height:90vh;overflow-y:auto;animation:tierPop 0.4s cubic-bezier(0.34,1.56,0.64,1);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div>
+          <div class="brand-mark">REVIEW TRADES</div>
+          <h2 style="margin-top:2px;font-size:20px;">${esc(nick)}</h2>
+        </div>
+        <button id="closeAdminReview" style="padding:6px 12px;">✕</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${studentTrades.length ? studentTrades.map(rowHtml).join('') : '<p class="muted">No trades yet.</p>'}
+      </div>
+      <p id="reviewMsg" class="muted" style="font-size:12px;margin-top:10px;"></p>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  document.getElementById('closeAdminReview').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  overlay.querySelectorAll('.review-toggle').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const newState = btn.dataset.reviewed !== '1';
+      const msg = document.getElementById('reviewMsg');
+      msg.textContent = 'Saving…';
+      const { error } = await sb.rpc('set_trade_reviewed', { p_trade_id: id, p_reviewed: newState, p_admin_password: state.adminPass });
+      if (error) { msg.textContent = 'Could not save. Try unlocking admin again.'; return; }
+      btn.dataset.reviewed = newState ? '1' : '0';
+      btn.textContent = newState ? '✓ Reviewed' : 'Mark reviewed';
+      btn.style.borderColor = newState ? 'var(--gold)' : '';
+      btn.style.color = newState ? 'var(--gold)' : '';
+      msg.textContent = newState ? 'Marked as reviewed.' : 'Review removed.';
+    };
+  });
 }
 
 function adminMetric(label, value, color) {
@@ -1846,6 +1909,7 @@ function renderMine(container, trades) {
             <span class="pill">${t.emotional ? 'Emotional' : 'Disciplined'}</span>
             <span class="pill">${esc(t.strategy || '-')}</span>
             <span class="pill">RR ${esc(t.risk_reward || '-')}</span>
+            ${t.reviewed ? `<span class="pill" style="background:rgba(212,175,55,0.15);color:var(--gold);">✓ Reviewed</span>` : ''}
           </div>
           ${t.notes ? `<div style="font-size:13px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.notes)}</div>` : ''}
         </div>
@@ -1881,6 +1945,7 @@ function openTradeDetail(t) {
     </div>`;
   }
   const qualityHtml = `
+    ${t.reviewed ? `<div class="card" style="background:rgba(212,175,55,0.1);border-color:var(--gold);margin-bottom:16px;display:flex;align-items:center;gap:8px;"><span style="font-size:18px;">✓</span><span style="font-size:13px;color:var(--gold);font-weight:500;">Reviewed by your mentor</span></div>` : ''}
     <div class="card" style="background:linear-gradient(135deg, rgba(212,175,55,0.08), var(--surface-2));border-color:${qColor};margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <div style="font-weight:500;">Trade Quality Score</div>
