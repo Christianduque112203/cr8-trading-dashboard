@@ -25,6 +25,55 @@
     --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
+
+  /* Retro terminal / hacker theme */
+  body.terminal {
+    --bg: #000800;
+    --surface-1: rgba(0, 20, 0, 0.85);
+    --surface-2: rgba(0, 28, 0, 0.9);
+    --border: #0f3d0f;
+    --border-strong: #1a5c1a;
+    --border-accent: #00ff66;
+    --text-primary: #00ff66;
+    --text-secondary: #2ec27e;
+    --text-muted: #1a7a3d;
+    --text-success: #00ff66;
+    --text-danger: #ff5f5f;
+    --bg-success: #022b0e;
+    --bg-danger: #2c0a0a;
+    --gold: #00ff66;
+  }
+  body.terminal,
+  body.terminal h2,
+  body.terminal input,
+  body.terminal select,
+  body.terminal textarea,
+  body.terminal button {
+    font-family: var(--font-mono) !important;
+    letter-spacing: 0.02em;
+  }
+  body.terminal #bg-layer { opacity: 0.12; filter: grayscale(1) brightness(0.6); }
+  body.terminal .avatar { background: linear-gradient(135deg, #00ff66, #066b2f); color: #001a08; }
+  body.terminal h2,
+  body.terminal .brand-mark { text-shadow: 0 0 8px rgba(0,255,102,0.5); }
+  /* CRT scanline overlay, only in terminal mode */
+  body.terminal::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 200;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 2px,
+      rgba(0,20,0,0.25) 3px,
+      rgba(0,0,0,0) 4px
+    );
+    animation: scanlineMove 8s linear infinite;
+  }
+  @keyframes scanlineMove {
+    from { background-position: 0 0; }
+    to { background-position: 0 100px; }
+  }
   * { box-sizing: border-box; }
   html, body { min-height: 100%; }
   body {
@@ -282,6 +331,77 @@
     gap: 6px;
   }
   body.has-live-ticker { padding-bottom: 50px; }
+
+  /* ===== Cinematic loading screen ===== */
+  #cr8-loader {
+    position: fixed; inset: 0; z-index: 500;
+    background: radial-gradient(circle at center, #14110a 0%, #050505 70%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 20px;
+    transition: opacity 0.6s ease;
+  }
+  #cr8-loader.fade-out { opacity: 0; pointer-events: none; }
+
+  .loader-ring {
+    position: absolute;
+    width: 150px; height: 150px;
+    border-radius: 50%;
+    border: 2px solid rgba(212,175,55,0.12);
+    border-top-color: var(--gold);
+    animation: loaderSpin 1s linear infinite;
+  }
+  @keyframes loaderSpin { to { transform: rotate(360deg); } }
+
+  .loader-candles {
+    display: flex; align-items: flex-end; gap: 4px; height: 54px;
+  }
+  .loader-candles i {
+    display: block; width: 6px; border-radius: 1px;
+    background: var(--gold);
+    box-shadow: 0 0 8px rgba(212,175,55,0.5);
+    animation: loaderCandle 1.4s ease-in-out infinite;
+  }
+  @keyframes loaderCandle {
+    0%, 100% { height: 24%; opacity: 0.6; }
+    50% { height: 100%; opacity: 1; }
+  }
+
+  .loader-chart {
+    width: 200px; height: 60px;
+  }
+  .loader-chart path {
+    stroke: var(--gold);
+    stroke-width: 2;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 400;
+    stroke-dashoffset: 400;
+    animation: drawChart 2.2s ease-in-out infinite;
+    filter: drop-shadow(0 0 4px rgba(212,175,55,0.6));
+  }
+  @keyframes drawChart {
+    0% { stroke-dashoffset: 400; }
+    55% { stroke-dashoffset: 0; }
+    85% { stroke-dashoffset: 0; opacity: 1; }
+    100% { stroke-dashoffset: 0; opacity: 0; }
+  }
+
+  .loader-brand {
+    font-family: var(--font-mono);
+    font-size: 14px; letter-spacing: 0.3em;
+    color: var(--gold);
+    text-shadow: 0 0 12px rgba(212,175,55,0.6);
+  }
+  .loader-boot {
+    font-family: var(--font-mono);
+    font-size: 11px; color: #4ade80;
+    min-height: 60px; width: 280px;
+    text-align: left;
+    white-space: pre-line;
+  }
+  .loader-boot .cursor { animation: blinkCursor 0.8s step-end infinite; }
+  @keyframes blinkCursor { 50% { opacity: 0; } }
   .badge-card {
     text-align: center; padding: 1.2rem 0.8rem;
     border-radius: var(--radius); border: 0.5px solid var(--border);
@@ -323,11 +443,31 @@
 <div id="bg-layer"></div>
 <div id="bg-overlay"></div>
 <div id="fx-layer"></div>
-<div id="app">Loading…</div>
+<div id="cr8-loader">
+  <div class="loader-ring"></div>
+  <div class="loader-candles">
+    <i style="animation-delay:0s;"></i>
+    <i style="animation-delay:-0.2s;"></i>
+    <i style="animation-delay:-0.4s;"></i>
+    <i style="animation-delay:-0.6s;"></i>
+    <i style="animation-delay:-0.8s;"></i>
+    <i style="animation-delay:-1s;"></i>
+    <i style="animation-delay:-1.2s;"></i>
+  </div>
+  <svg class="loader-chart" viewBox="0 0 200 60" preserveAspectRatio="none">
+    <path d="M0,50 L25,42 L50,46 L75,30 L100,34 L125,18 L150,22 L175,8 L200,12" />
+  </svg>
+  <div class="loader-brand">CR8 TRADING</div>
+  <div class="loader-boot" id="loaderBoot"></div>
+</div>
+<div id="app"></div>
 <script>
   setTimeout(function() {
     const appEl = document.getElementById('app');
-    if (appEl && appEl.textContent.trim() === 'Loading…') {
+    const loaderEl = document.getElementById('cr8-loader');
+    // If the app never rendered any real content, show a connection error
+    if (appEl && appEl.children.length === 0 && appEl.textContent.trim() === '') {
+      if (loaderEl) loaderEl.remove();
       appEl.innerHTML =
         '<div style="max-width:420px;margin:60px auto;text-align:center;">' +
         '<div style="font-family:monospace;font-size:13px;color:#d4af37;letter-spacing:0.1em;">CR8 TRADING</div>' +
@@ -337,7 +477,7 @@
         '<button onclick="location.reload()" style="margin-top:12px;padding:8px 16px;background:#1f1d17;border:1px solid #d4af37;color:#d4af37;border-radius:8px;cursor:pointer;">Try again</button>' +
         '</div>';
     }
-  }, 5000);
+  }, 9000);
 </script>
 
 <script>
@@ -535,6 +675,9 @@ function candleStrip(n) {
 }
 
 async function init() {
+  if (localStorage.getItem('cr8_terminal_theme') === '1') {
+    document.body.classList.add('terminal');
+  }
   const saved = sessionStorage.getItem('cr8_code');
   const savedNick = sessionStorage.getItem('cr8_nick');
   if (saved) {
@@ -1149,7 +1292,10 @@ async function renderDashboard() {
           ${myTier.next ? `<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Next: ${myTier.next.icon} ${myTier.next.name} &middot; needs ${myTier.next.minTrades} trades &amp; ${myTier.next.minScore}+ score</div>` : `<div style="font-size:11px;color:var(--gold);margin-top:3px;">Max tier reached 🏆</div>`}
         </div>
       </div>
-      <button id="logoutBtn">Log out</button>
+      <div style="display:flex;gap:8px;">
+        <button id="themeToggle" title="Toggle terminal mode" style="padding:8px 12px;">▣</button>
+        <button id="logoutBtn">Log out</button>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px;margin-bottom:1.5rem;" class="fade-in">
       ${metricCard('Trades logged', stats.total)}
@@ -1180,6 +1326,14 @@ async function renderDashboard() {
     renderLogin();
   };
   startLiveTicker();
+  const themeToggle = document.getElementById('themeToggle');
+  if (themeToggle) {
+    themeToggle.onclick = () => {
+      document.body.classList.toggle('terminal');
+      const isTerminal = document.body.classList.contains('terminal');
+      localStorage.setItem('cr8_terminal_theme', isTerminal ? '1' : '0');
+    };
+  }
   const dismissBtn = document.getElementById('dismissAnnouncement');
   if (dismissBtn && latestAnnouncementId) {
     dismissBtn.onclick = () => {
@@ -2022,7 +2176,73 @@ document.addEventListener('click', (e) => {
 });
 
 setupBackgroundFX();
-init();
+
+// Cinematic loader boot sequence
+(function runLoaderBoot() {
+  const bootEl = document.getElementById('loaderBoot');
+  const loader = document.getElementById('cr8-loader');
+  if (!bootEl || !loader) { init(); return; }
+
+  const lines = [
+    '> Initializing CR8 Trading Journal...',
+    '> Connecting to market data...',
+    '> Loading trader profiles...',
+    '> Calibrating leaderboard...',
+    '> Ready.'
+  ];
+
+  let lineIndex = 0;
+  let charIndex = 0;
+  let displayed = '';
+
+  function typeChar() {
+    if (lineIndex >= lines.length) {
+      finishLoader();
+      return;
+    }
+    const currentLine = lines[lineIndex];
+    if (charIndex < currentLine.length) {
+      displayed = displayed.replace(/<span class="cursor">█<\/span>$/, '');
+      displayed += currentLine[charIndex];
+      bootEl.innerHTML = displayed + '<span class="cursor">█</span>';
+      charIndex++;
+      setTimeout(typeChar, 18 + Math.random() * 25);
+    } else {
+      displayed = displayed.replace(/<span class="cursor">█<\/span>$/, '') + '\n';
+      lineIndex++;
+      charIndex = 0;
+      // keep only the last 4 lines visible
+      const shownLines = displayed.split('\n').filter(Boolean).slice(-4);
+      displayed = shownLines.join('\n') + '\n';
+      setTimeout(typeChar, 180);
+    }
+  }
+
+  let appReady = false;
+  let bootDone = false;
+
+  function finishLoader() {
+    bootDone = true;
+    tryHide();
+  }
+  function tryHide() {
+    if (bootDone && appReady) {
+      loader.classList.add('fade-out');
+      setTimeout(() => loader.remove(), 600);
+    }
+  }
+
+  // Start typing, and load the app in parallel
+  typeChar();
+  (async () => {
+    await init();
+    appReady = true;
+    tryHide();
+  })();
+
+  // Safety: never let the loader hang forever
+  setTimeout(() => { appReady = true; bootDone = true; tryHide(); }, 8000);
+})();
 </script>
 </body>
 </html>
