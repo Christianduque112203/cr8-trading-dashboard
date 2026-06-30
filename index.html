@@ -1630,8 +1630,25 @@ function renderLogForm(container) {
         <input type="range" id="exitSlider" min="0" max="100" value="75" style="width:100%;accent-color:var(--gold);" />
       </div>
 
-      <label style="margin-top:16px;">Notes</label>
-      <textarea id="notesInput" rows="3" placeholder="What happened on this trade" style="width:100%;margin-bottom:16px;"></textarea>
+      <label style="margin-top:16px;">Trade Story</label>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Turn this trade into a case study you can learn from later.</div>
+
+      <label style="font-size:12px;">Why did you enter?</label>
+      <textarea id="storyWhy" rows="2" placeholder="What made this a trade worth taking?" style="width:100%;margin-bottom:10px;"></textarea>
+
+      <label style="font-size:12px;">What were you feeling?</label>
+      <textarea id="storyFeeling" rows="2" placeholder="Calm? Anxious? Confident? FOMO?" style="width:100%;margin-bottom:10px;"></textarea>
+
+      <label style="font-size:12px;">Would you take this trade again?</label>
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <button type="button" id="againYes" class="story-again-btn" data-again="Yes" style="flex:1;">Yes</button>
+        <button type="button" id="againNo" class="story-again-btn" data-again="No" style="flex:1;">No</button>
+        <button type="button" id="againMaybe" class="story-again-btn" data-again="With changes" style="flex:1;">With changes</button>
+      </div>
+
+      <label style="font-size:12px;">Lessons learned</label>
+      <textarea id="storyLesson" rows="2" placeholder="What will you carry into your next trade?" style="width:100%;margin-bottom:16px;"></textarea>
+
       <button id="submitTrade" style="width:100%;">Log trade</button>
       <p id="submitMsg" class="muted" style="font-size:12px;margin-top:8px;"></p>
     </div>`;
@@ -1695,6 +1712,17 @@ function renderLogForm(container) {
     };
   }
 
+  // Trade story "would you take again" selector
+  state.storyAgain = null;
+  const againBtns = container.querySelectorAll('.story-again-btn');
+  againBtns.forEach(b => {
+    b.onclick = () => {
+      againBtns.forEach(x => x.style.border = '0.5px solid var(--border-strong)');
+      b.style.border = '2px solid var(--border-accent)';
+      state.storyAgain = b.dataset.again;
+    };
+  });
+
   document.getElementById('imgInput').onchange = (e) => {
     const f = e.target.files[0];
     if (!f) return;
@@ -1731,7 +1759,11 @@ function renderLogForm(container) {
       result: document.getElementById('resultInput').value,
       pnl_pct: parseFloat(document.getElementById('pnlInput').value || '0'),
       emotional: state.emotionalVal,
-      notes: document.getElementById('notesInput').value || null,
+      notes: document.getElementById('storyWhy').value || null,
+      story_why: document.getElementById('storyWhy').value || null,
+      story_feeling: document.getElementById('storyFeeling').value || null,
+      story_again: state.storyAgain || null,
+      story_lesson: document.getElementById('storyLesson').value || null,
       screenshot_url: screenshotUrl,
       setup_score: state.setupScore != null ? state.setupScore : null,
       rule_violations: state.violations || [],
@@ -1867,10 +1899,33 @@ function openTradeDetail(t) {
         </div>` : ''}
       </div>
 
-      ${t.notes ? `
-        <div>
-          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Notes</div>
-          <div style="font-size:14px;color:var(--text-primary);line-height:1.6;background:var(--surface-2);padding:12px;border-radius:var(--radius);">${esc(t.notes)}</div>
+      ${(t.story_why || t.story_feeling || t.story_again || t.story_lesson || t.notes) ? `
+        <div style="margin-bottom:4px;">
+          <div style="font-size:12px;color:var(--gold);font-weight:500;margin-bottom:8px;">📖 TRADE STORY</div>
+          ${t.story_why ? `
+            <div style="margin-bottom:10px;">
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">Why did you enter?</div>
+              <div style="font-size:14px;color:var(--text-primary);line-height:1.5;">${esc(t.story_why)}</div>
+            </div>` : (t.notes && !t.story_why ? `
+            <div style="margin-bottom:10px;">
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">Notes</div>
+              <div style="font-size:14px;color:var(--text-primary);line-height:1.5;">${esc(t.notes)}</div>
+            </div>` : '')}
+          ${t.story_feeling ? `
+            <div style="margin-bottom:10px;">
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">What were you feeling?</div>
+              <div style="font-size:14px;color:var(--text-primary);line-height:1.5;">${esc(t.story_feeling)}</div>
+            </div>` : ''}
+          ${t.story_again ? `
+            <div style="margin-bottom:10px;">
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">Would you take this trade again?</div>
+              <span class="pill" style="background:${t.story_again === 'Yes' ? 'var(--bg-success)' : t.story_again === 'No' ? 'var(--bg-danger)' : 'rgba(251,191,36,0.12)'};color:${t.story_again === 'Yes' ? 'var(--text-success)' : t.story_again === 'No' ? 'var(--text-danger)' : '#fbbf24'};">${esc(t.story_again)}</span>
+            </div>` : ''}
+          ${t.story_lesson ? `
+            <div style="margin-bottom:10px;">
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">Lessons learned</div>
+              <div style="font-size:14px;color:var(--text-primary);line-height:1.5;background:var(--surface-2);padding:10px;border-radius:var(--radius);border-left:2px solid var(--gold);">${esc(t.story_lesson)}</div>
+            </div>` : ''}
         </div>` : ''}
       ${(t.rule_violations && t.rule_violations.length) ? `
         <div style="margin-top:16px;">
