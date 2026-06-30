@@ -1024,6 +1024,7 @@ function renderAdminPanel() {
         <button class="tabbtn active" id="adminTab-overview" data-atab="overview">Student Overview</button>
         <button class="tabbtn" id="adminTab-issue" data-atab="issue">Issue Code</button>
         <button class="tabbtn" id="adminTab-announce" data-atab="announce">Announcements</button>
+        <button class="tabbtn" id="adminTab-homework" data-atab="homework">Homework</button>
       </div>
 
       <div id="adminContent"><p class="muted">Loading students…</p></div>
@@ -1047,6 +1048,69 @@ function renderAdminPanel() {
 async function renderAdminContent(tab) {
   const content = document.getElementById('adminContent');
   if (!content) return;
+
+  if (tab === 'homework') {
+    content.innerHTML = `<p class="muted" style="font-size:13px;">Loading…</p>`;
+    const [{ data: traders }, { data: assignments }, { data: dones }] = await Promise.all([
+      sb.from('traders').select('*'),
+      sb.from('assignments').select('*').order('created_at', { ascending: false }),
+      sb.from('assignment_done').select('*')
+    ]);
+    const traderList = traders || [];
+    const doneCounts = {};
+    (dones || []).forEach(d => { doneCounts[d.assignment_id] = (doneCounts[d.assignment_id] || 0) + 1; });
+    const nickOf = {};
+    traderList.forEach(t => nickOf[t.code] = t.nickname);
+
+    content.innerHTML = `
+      <div class="fade-in" style="max-width:560px;">
+        <label>Assignment title</label>
+        <input id="hwTitle" placeholder="e.g. Log 5 trades with full Trade Story" style="width:100%;margin-bottom:10px;" />
+        <label>Details (optional)</label>
+        <textarea id="hwDetail" rows="2" placeholder="Any instructions or context" style="width:100%;margin-bottom:10px;"></textarea>
+        <label>Assign to</label>
+        <select id="hwTarget" style="width:100%;margin-bottom:12px;">
+          <option value="">Whole class</option>
+          ${traderList.map(t => `<option value="${esc(t.code)}">${esc(t.nickname)}</option>`).join('')}
+        </select>
+        <button id="hwPost" style="width:100%;">Assign homework</button>
+        <p id="hwMsg" class="muted" style="font-size:13px;margin-top:10px;"></p>
+
+        <div style="margin-top:24px;">
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Active assignments</div>
+          ${(assignments && assignments.length) ? assignments.map(a => `
+            <div class="card" style="margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div>
+                  <div style="font-weight:500;font-size:14px;">${esc(a.title)}</div>
+                  ${a.detail ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${esc(a.detail)}</div>` : ''}
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${a.target_code ? '👤 ' + esc(nickOf[a.target_code] || a.target_code) : '👥 Whole class'} &middot; ${doneCounts[a.id] || 0} completed</div>
+                </div>
+                <button class="hw-delete" data-id="${a.id}" style="font-size:11px;padding:4px 8px;flex-shrink:0;">Delete</button>
+              </div>
+            </div>`).join('') : `<p class="muted" style="font-size:13px;">No assignments yet.</p>`}
+        </div>
+      </div>`;
+
+    document.getElementById('hwPost').onclick = async () => {
+      const title = document.getElementById('hwTitle').value.trim();
+      const detail = document.getElementById('hwDetail').value.trim();
+      const target = document.getElementById('hwTarget').value;
+      const msg = document.getElementById('hwMsg');
+      if (!title) { msg.textContent = 'Add a title first.'; return; }
+      msg.textContent = 'Assigning…';
+      const { error } = await sb.rpc('post_assignment', { p_target_code: target, p_title: title, p_detail: detail || null, p_admin_password: state.adminPass });
+      if (error) { msg.textContent = 'Could not assign. Try unlocking admin again.'; return; }
+      renderAdminContent('homework');
+    };
+    content.querySelectorAll('.hw-delete').forEach(b => {
+      b.onclick = async () => {
+        await sb.rpc('delete_assignment', { p_id: b.dataset.id, p_admin_password: state.adminPass });
+        renderAdminContent('homework');
+      };
+    });
+    return;
+  }
 
   if (tab === 'announce') {
     content.innerHTML = `<p class="muted" style="font-size:13px;">Loading…</p>`;
@@ -1571,6 +1635,40 @@ async function renderDashboard() {
     }
   } catch (e) { /* announcements table may not exist yet, fail silently */ }
 
+  // Fetch assignments (homework) for this student
+  let assignmentBanner = '';
+  try {
+    const [{ data: assignments }, { data: dones }] = await Promise.all([
+      sb.from('assignments').select('*').order('created_at', { ascending: false }),
+      sb.from('assignment_done').select('*').eq('trader_code', state.currentCode)
+    ]);
+    const mine = (assignments || []).filter(a => !a.target_code || a.target_code === state.currentCode);
+    const doneIds = new Set((dones || []).map(d => d.assignment_id));
+    const pending = mine.filter(a => !doneIds.has(a.id));
+    if (mine.length) {
+      assignmentBanner = `
+        <div class="card fade-in" style="border-color:#a78bfa;margin-bottom:1.25rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div style="font-size:12px;color:#a78bfa;font-weight:500;">📋 HOMEWORK FROM YOUR MENTOR</div>
+            <div style="font-size:11px;color:var(--text-muted);">${pending.length} pending</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${mine.map(a => {
+              const done = doneIds.has(a.id);
+              return `
+                <div style="display:flex;gap:10px;align-items:flex-start;${done ? 'opacity:0.55;' : ''}">
+                  <button class="hw-toggle" data-id="${a.id}" data-done="${done ? '1' : '0'}" style="width:22px;height:22px;padding:0;flex-shrink:0;border-radius:6px;${done ? 'background:#a78bfa;border-color:#a78bfa;color:#1a1605;' : ''}">${done ? '✓' : ''}</button>
+                  <div>
+                    <div style="font-size:14px;${done ? 'text-decoration:line-through;' : ''}">${esc(a.title)}</div>
+                    ${a.detail ? `<div style="font-size:12px;color:var(--text-secondary);">${esc(a.detail)}</div>` : ''}
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+    }
+  } catch (e) { /* assignments table may not exist yet */ }
+
   // Build streak banner HTML
   let streakBanner = '';
   if (streaks.current > 0) {
@@ -1689,6 +1787,7 @@ async function renderDashboard() {
         </div>` : ''}
     </div>
     ${drawdownAlert}
+    ${assignmentBanner}
     ${announcementBanner}
     ${streakBanner}
     <div class="tab-bar-h" style="display:flex;gap:8px;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
@@ -1729,6 +1828,13 @@ async function renderDashboard() {
       renderDashboard();
     };
   }
+  app.querySelectorAll('.hw-toggle').forEach(b => {
+    b.onclick = async () => {
+      const newDone = b.dataset.done !== '1';
+      await sb.rpc('set_assignment_done', { p_assignment_id: b.dataset.id, p_trader_code: state.currentCode, p_done: newDone });
+      renderDashboard();
+    };
+  });
   const TAB_ORDER = ['log', 'watch', 'mine', 'charts', 'calc', 'board', 'badges', 'bests', 'dna'];
   app.querySelectorAll('.tabbtn').forEach(b => {
     b.onclick = () => {
