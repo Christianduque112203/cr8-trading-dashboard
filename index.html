@@ -768,7 +768,9 @@ let state = {
   adminPass: null,
   slideDir: null,
   setupScore: 0,
-  violations: []
+  violations: [],
+  qPatience: 75,
+  qExit: 75
 };
 
 const app = document.getElementById('app');
@@ -1252,6 +1254,57 @@ function computeBadges(trades, code) {
   return badges;
 }
 
+// Trade Quality Score — rewards execution, not profit.
+// Entry: from setup-quality checklist score.
+// Risk Management: starts at 100, docked for risk-related rule violations + poor RR.
+// Patience: self-rated (stored), falls back to discipline-based estimate.
+// Exit: self-rated (stored), falls back to result-aware estimate.
+function computeTradeQuality(t) {
+  // Entry — based on setup score (how well it matched the plan)
+  const entry = t.setup_score != null ? t.setup_score : 60;
+
+  // Risk Management — penalize risk-related violations
+  let risk = 100;
+  const violations = t.rule_violations || [];
+  if (violations.includes('Moved stop loss')) risk -= 35;
+  if (violations.includes('Over leveraged')) risk -= 30;
+  if (violations.includes('No clear setup')) risk -= 15;
+  // Reward defined RR of 1:2 or better
+  const m = String(t.risk_reward || '').match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
+  if (m) {
+    const ratio = parseFloat(m[2]) / parseFloat(m[1]);
+    if (ratio < 1) risk -= 15;
+  } else {
+    risk -= 10; // no RR defined
+  }
+  risk = Math.max(0, Math.min(100, risk));
+
+  // Patience — self-rated if present, else estimated
+  let patience;
+  if (t.q_patience != null) {
+    patience = t.q_patience;
+  } else {
+    patience = 80;
+    if (t.emotional) patience -= 30;
+    if (violations.includes('Entered early')) patience -= 25;
+    if (violations.includes('Revenge trade')) patience -= 35;
+    patience = Math.max(0, Math.min(100, patience));
+  }
+
+  // Exit — self-rated if present, else estimated
+  let exit;
+  if (t.q_exit != null) {
+    exit = t.q_exit;
+  } else {
+    exit = 75;
+    if (violations.includes('Moved stop loss')) exit -= 25;
+    exit = Math.max(0, Math.min(100, exit));
+  }
+
+  const overall = Math.round((entry + risk + patience + exit) / 4);
+  return { entry: Math.round(entry), risk: Math.round(risk), patience: Math.round(patience), exit: Math.round(exit), overall };
+}
+
 function computeStreaks(trades, code) {
   // Sort by date+time ascending so we scan from oldest to newest
   const t = trades
@@ -1560,6 +1613,23 @@ function renderLogForm(container) {
       </div>
       <div class="prob-meter-track"><div class="prob-meter-fill" id="probFill" style="width:0%;"></div></div>
 
+      <label style="margin-top:16px;">Execution self-rating</label>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Rate how well you executed — honestly, regardless of profit.</div>
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+          <span>Patience (waited for your setup)</span>
+          <span id="patienceVal" style="font-family:var(--font-mono);color:var(--gold);">75</span>
+        </div>
+        <input type="range" id="patienceSlider" min="0" max="100" value="75" style="width:100%;accent-color:var(--gold);" />
+      </div>
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+          <span>Exit (closed per your plan)</span>
+          <span id="exitVal" style="font-family:var(--font-mono);color:var(--gold);">75</span>
+        </div>
+        <input type="range" id="exitSlider" min="0" max="100" value="75" style="width:100%;accent-color:var(--gold);" />
+      </div>
+
       <label style="margin-top:16px;">Notes</label>
       <textarea id="notesInput" rows="3" placeholder="What happened on this trade" style="width:100%;margin-bottom:16px;"></textarea>
       <button id="submitTrade" style="width:100%;">Log trade</button>
@@ -1607,6 +1677,24 @@ function renderLogForm(container) {
     c.onclick = () => { c.classList.toggle('checked'); updateProb(); };
   });
 
+  // Execution self-rating sliders
+  state.qPatience = 75;
+  state.qExit = 75;
+  const patienceSlider = document.getElementById('patienceSlider');
+  const exitSlider = document.getElementById('exitSlider');
+  if (patienceSlider) {
+    patienceSlider.oninput = () => {
+      state.qPatience = parseInt(patienceSlider.value, 10);
+      document.getElementById('patienceVal').textContent = state.qPatience;
+    };
+  }
+  if (exitSlider) {
+    exitSlider.oninput = () => {
+      state.qExit = parseInt(exitSlider.value, 10);
+      document.getElementById('exitVal').textContent = state.qExit;
+    };
+  }
+
   document.getElementById('imgInput').onchange = (e) => {
     const f = e.target.files[0];
     if (!f) return;
@@ -1646,7 +1734,9 @@ function renderLogForm(container) {
       notes: document.getElementById('notesInput').value || null,
       screenshot_url: screenshotUrl,
       setup_score: state.setupScore != null ? state.setupScore : null,
-      rule_violations: state.violations || []
+      rule_violations: state.violations || [],
+      q_patience: state.qPatience != null ? state.qPatience : null,
+      q_exit: state.qExit != null ? state.qExit : null
     };
 
     const { error: insertErr } = await sb.from('trades').insert(payload);
@@ -1700,6 +1790,34 @@ function openTradeDetail(t) {
   overlay.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn 0.25s ease-out;';
 
   const resultColor = t.result === 'win' ? 'var(--text-success)' : 'var(--text-danger)';
+  const q = computeTradeQuality(t);
+  const qColor = q.overall >= 80 ? 'var(--text-success)' : q.overall >= 60 ? '#fbbf24' : 'var(--text-danger)';
+  function qBar(label, val) {
+    const c = val >= 80 ? 'var(--text-success)' : val >= 60 ? '#fbbf24' : 'var(--text-danger)';
+    return `<div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+        <span style="color:var(--text-secondary);">${label}</span>
+        <span style="font-family:var(--font-mono);color:${c};">${val}</span>
+      </div>
+      <div style="height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:${val}%;background:${c};border-radius:3px;"></div>
+      </div>
+    </div>`;
+  }
+  const qualityHtml = `
+    <div class="card" style="background:linear-gradient(135deg, rgba(212,175,55,0.08), var(--surface-2));border-color:${qColor};margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-weight:500;">Trade Quality Score</div>
+        <div style="font-family:var(--font-mono);font-weight:500;font-size:26px;color:${qColor};">${q.overall}<span style="font-size:14px;color:var(--text-muted);">/100</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        ${qBar('Entry', q.entry)}
+        ${qBar('Risk Management', q.risk)}
+        ${qBar('Patience', q.patience)}
+        ${qBar('Exit', q.exit)}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:10px;">Execution quality — independent of profit. A losing trade can still score high.</div>
+    </div>`;
   overlay.innerHTML = `
     <div class="card" style="max-width:560px;width:100%;max-height:90vh;overflow-y:auto;animation:tierPop 0.4s cubic-bezier(0.34,1.56,0.64,1);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
@@ -1714,6 +1832,8 @@ function openTradeDetail(t) {
       ${t.screenshot_url
         ? `<img src="${t.screenshot_url}" style="width:100%;border-radius:var(--radius);border:0.5px solid var(--border);margin-bottom:16px;" />`
         : `<div style="width:100%;height:120px;border-radius:var(--radius);background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--text-muted);margin-bottom:16px;">No screenshot uploaded</div>`}
+
+      ${qualityHtml}
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
         <div class="card" style="background:var(--surface-2);">
@@ -2247,6 +2367,15 @@ function renderPersonalBests(container, trades) {
       icon: '📊', label: 'Total Trades', color: 'var(--text-primary)',
       value: `${total}`,
       sub: `${total ? Math.round((wins/total)*100) : 0}% overall win rate`
+    },
+    {
+      icon: '⚡', label: 'Avg Quality Score', color: 'var(--gold)',
+      value: (() => {
+        const scores = trades.map(t => computeTradeQuality(t).overall);
+        const avg = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : 0;
+        return `${avg}/100`;
+      })(),
+      sub: 'Execution quality across all trades'
     }
   ];
 
