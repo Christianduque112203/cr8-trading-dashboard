@@ -1693,6 +1693,7 @@ async function renderDashboard() {
     ${streakBanner}
     <div class="tab-bar-h" style="display:flex;gap:8px;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
       <button class="tabbtn ${state.tab==='log'?'active':''}" data-tab="log">➕ Log Trade</button>
+      <button class="tabbtn ${state.tab==='watch'?'active':''}" data-tab="watch">👁 Watchlist</button>
       <button class="tabbtn ${state.tab==='mine'?'active':''}" data-tab="mine">📜 Journal</button>
       <button class="tabbtn ${state.tab==='charts'?'active':''}" data-tab="charts">📈 Charts</button>
       <button class="tabbtn ${state.tab==='calc'?'active':''}" data-tab="calc">🧮 Risk</button>
@@ -1728,7 +1729,7 @@ async function renderDashboard() {
       renderDashboard();
     };
   }
-  const TAB_ORDER = ['log', 'mine', 'charts', 'calc', 'board', 'badges', 'bests', 'dna'];
+  const TAB_ORDER = ['log', 'watch', 'mine', 'charts', 'calc', 'board', 'badges', 'bests', 'dna'];
   app.querySelectorAll('.tabbtn').forEach(b => {
     b.onclick = () => {
       const fromIndex = TAB_ORDER.indexOf(state.tab);
@@ -1742,6 +1743,7 @@ async function renderDashboard() {
   // Build & populate the vertical side navigation
   const SIDE_TABS = [
     { id: 'log', icon: '➕', label: 'Log Trade' },
+    { id: 'watch', icon: '👁', label: 'Watchlist' },
     { id: 'mine', icon: '📜', label: 'Journal' },
     { id: 'charts', icon: '📈', label: 'Charts' },
     { id: 'calc', icon: '🧮', label: 'Risk' },
@@ -1769,6 +1771,7 @@ async function renderDashboard() {
 
   const content = document.getElementById('tabContent');
   if (state.tab === 'log') renderLogForm(content);
+  else if (state.tab === 'watch') renderWatchlist(content);
   else if (state.tab === 'mine') renderMine(content, myTrades);
   else if (state.tab === 'charts') renderCharts(content, myTrades);
   else if (state.tab === 'calc') renderRiskCalc(content);
@@ -1798,6 +1801,105 @@ function metricCard(label, value, color, standout) {
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">${label}</div>
     <div class="value-pop" style="font-size:24px;font-weight:500;font-family:var(--font-mono);${style}">${value}</div>
   </div>`;
+}
+
+async function renderWatchlist(container) {
+  container.innerHTML = `<div class="fade-in"><p class="muted">Loading your watchlist…</p></div>`;
+
+  let items = [];
+  try {
+    const { data } = await sb.from('watchlist').select('*').eq('trader_code', state.currentCode).order('created_at', { ascending: false });
+    items = data || [];
+  } catch (e) { /* table may not exist yet */ }
+
+  const watching = items.filter(i => i.status === 'watching');
+  const resolved = items.filter(i => i.status !== 'watching');
+
+  function itemCard(i) {
+    const biasColor = i.bias === 'long' ? 'var(--text-success)' : i.bias === 'short' ? 'var(--text-danger)' : 'var(--text-muted)';
+    const statusPill = i.status === 'taken'
+      ? `<span class="pill" style="background:var(--bg-success);color:var(--text-success);">✓ Taken</span>`
+      : i.status === 'skipped'
+      ? `<span class="pill" style="background:var(--surface-2);color:var(--text-muted);">⊘ Skipped</span>`
+      : '';
+    return `
+      <div class="card" style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div>
+            <div style="font-weight:500;font-size:15px;">${esc(i.instrument || 'Setup')} ${i.bias ? `<span style="font-size:12px;color:${biasColor};text-transform:uppercase;">${esc(i.bias)}</span>` : ''}</div>
+            ${i.setup ? `<div style="font-size:12px;color:var(--text-secondary);">${esc(i.setup)}</div>` : ''}
+          </div>
+          ${statusPill}
+        </div>
+        ${i.trigger_note ? `<div style="font-size:13px;color:var(--text-secondary);">Waiting for: ${esc(i.trigger_note)}</div>` : ''}
+        ${i.status === 'watching' ? `
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <button class="wl-status" data-id="${i.id}" data-status="taken" style="flex:1;font-size:12px;">Mark taken</button>
+            <button class="wl-status" data-id="${i.id}" data-status="skipped" style="flex:1;font-size:12px;">Skip</button>
+          </div>` : `
+          <div><button class="wl-status" data-id="${i.id}" data-status="watching" style="font-size:11px;padding:4px 10px;">↩ Back to watching</button></div>`}
+      </div>`;
+  }
+
+  container.innerHTML = `
+    <div class="fade-in" style="display:flex;flex-direction:column;gap:16px;">
+      <div class="card">
+        <div style="font-weight:500;margin-bottom:4px;">Add a setup to watch</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Note a setup before you take it. Patience is the edge.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div><label>Instrument</label><input id="wlInstrument" placeholder="EUR/USD" style="width:100%;" /></div>
+          <div><label>Bias</label>
+            <select id="wlBias" style="width:100%;">
+              <option value="long">Long</option>
+              <option value="short">Short</option>
+            </select>
+          </div>
+        </div>
+        <label>Setup / pattern</label>
+        <input id="wlSetup" placeholder="e.g. Fade & break, OB retest" style="width:100%;margin-bottom:10px;" />
+        <label>What are you waiting for?</label>
+        <input id="wlTrigger" placeholder="e.g. Break of London high + retest" style="width:100%;margin-bottom:12px;" />
+        <button id="wlAdd" style="width:100%;">Add to watchlist</button>
+        <p id="wlMsg" class="muted" style="font-size:12px;margin-top:8px;"></p>
+      </div>
+
+      <div>
+        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">👁 Watching (${watching.length})</div>
+        ${watching.length ? `<div style="display:flex;flex-direction:column;gap:10px;">${watching.map(itemCard).join('')}</div>` : `<p class="muted" style="font-size:13px;">Nothing on your watchlist. Add a setup above before you trade it.</p>`}
+      </div>
+
+      ${resolved.length ? `
+      <div>
+        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">History (${resolved.length})</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">${resolved.map(itemCard).join('')}</div>
+      </div>` : ''}
+    </div>`;
+
+  document.getElementById('wlAdd').onclick = async () => {
+    const instrument = document.getElementById('wlInstrument').value.trim();
+    const bias = document.getElementById('wlBias').value;
+    const setup = document.getElementById('wlSetup').value.trim();
+    const trigger = document.getElementById('wlTrigger').value.trim();
+    const msg = document.getElementById('wlMsg');
+    if (!instrument && !setup) { msg.textContent = 'Add at least an instrument or setup.'; return; }
+    msg.textContent = 'Adding…';
+    const { error } = await sb.rpc('add_watchlist', {
+      p_trader_code: state.currentCode,
+      p_instrument: instrument || null,
+      p_bias: bias,
+      p_setup: setup || null,
+      p_trigger_note: trigger || null
+    });
+    if (error) { msg.textContent = 'Could not add. Try again.'; return; }
+    renderWatchlist(container);
+  };
+
+  container.querySelectorAll('.wl-status').forEach(b => {
+    b.onclick = async () => {
+      await sb.rpc('set_watchlist_status', { p_id: b.dataset.id, p_trader_code: state.currentCode, p_status: b.dataset.status });
+      renderWatchlist(container);
+    };
+  });
 }
 
 function renderLogForm(container) {
