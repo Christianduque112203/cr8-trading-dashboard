@@ -2562,6 +2562,26 @@ function renderCharts(container, trades) {
     .sort((a, b) => b.count - a.count);
   const totalViolations = Object.values(violationCounts).reduce((a, b) => a + b, 0);
 
+  // ===== Profit by Strategy =====
+  const stratGroups = {};
+  trades.forEach(t => {
+    const name = (t.strategy || 'Unspecified').trim() || 'Unspecified';
+    if (!stratGroups[name]) stratGroups[name] = { trades: 0, wins: 0, pnl: 0 };
+    stratGroups[name].trades++;
+    if (t.result === 'win') stratGroups[name].wins++;
+    stratGroups[name].pnl += Number(t.pnl_pct) || 0;
+  });
+  const stratRows = Object.entries(stratGroups)
+    .map(([name, s]) => ({
+      name,
+      trades: s.trades,
+      winRate: Math.round((s.wins / s.trades) * 100),
+      pnl: Math.round(s.pnl * 10) / 10,
+      avgPnl: Math.round((s.pnl / s.trades) * 10) / 10
+    }))
+    .sort((a, b) => b.pnl - a.pnl);
+  const maxAbsPnl = Math.max(1, ...stratRows.map(s => Math.abs(s.pnl)));
+
   // ===== Hidden Edge Detector =====
   // Finds conditions where the trader's win rate beats their baseline by a meaningful margin.
   const baseWins = trades.filter(t => t.result === 'win').length;
@@ -2760,6 +2780,36 @@ function renderCharts(container, trades) {
             </div>`).join('')}
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:12px;">${totalViolations} total violation${totalViolations !== 1 ? 's' : ''} across ${trades.length} trades.</div>`}
+      </div>
+
+      <div class="card">
+        <div style="font-weight:500;margin-bottom:4px;">Profit by Strategy</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Which setups actually make you money — not just which feel good</div>
+        ${stratRows.length === 0 ? `<p class="muted" style="font-size:13px;">Log trades with a strategy filled in to see this breakdown.</p>` : `
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          ${stratRows.map(s => {
+            const pos = s.pnl >= 0;
+            const barPct = Math.round((Math.abs(s.pnl) / maxAbsPnl) * 100);
+            return `
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+                  <span style="font-size:13px;font-weight:500;">${esc(s.name)} <span style="color:var(--text-muted);font-size:11px;font-weight:400;">${s.trades} trade${s.trades!==1?'s':''} · ${s.winRate}% win</span></span>
+                  <span style="font-family:var(--font-mono);font-weight:500;font-size:13px;color:${pos ? 'var(--text-success)' : 'var(--text-danger)'};">${pos ? '+' : ''}${s.pnl}%</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0;height:8px;">
+                  <div style="flex:1;display:flex;justify-content:flex-end;">
+                    ${!pos ? `<div style="height:8px;width:${barPct}%;background:linear-gradient(90deg,var(--text-danger),#7a2020);border-radius:4px 0 0 4px;"></div>` : ''}
+                  </div>
+                  <div style="width:1px;height:12px;background:var(--border-strong);"></div>
+                  <div style="flex:1;">
+                    ${pos ? `<div style="height:8px;width:${barPct}%;background:linear-gradient(90deg,#1f5c33,var(--text-success));border-radius:0 4px 4px 0;"></div>` : ''}
+                  </div>
+                </div>
+                <div style="font-size:10px;color:var(--text-muted);margin-top:3px;text-align:right;">avg ${s.avgPnl >= 0 ? '+' : ''}${s.avgPnl}% / trade</div>
+              </div>`;
+          }).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:12px;">The center line is breakeven. Bars right = net profit, left = net loss.</div>`}
       </div>
 
       <div class="card" style="border-color:var(--gold);background:linear-gradient(135deg, rgba(212,175,55,0.06), var(--surface-1));">
