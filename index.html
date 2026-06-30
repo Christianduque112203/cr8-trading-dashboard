@@ -1247,8 +1247,82 @@ function renderCharts(container, trades) {
 
   const isPositive = equityData[equityData.length - 1] >= 0;
 
+  // Build trade calendar heatmap — last 12 weeks, GitHub-style
+  const byDate = {};
+  trades.forEach(t => {
+    if (!byDate[t.trade_date]) byDate[t.trade_date] = { wins: 0, losses: 0, pnl: 0 };
+    if (t.result === 'win') byDate[t.trade_date].wins++; else byDate[t.trade_date].losses++;
+    byDate[t.trade_date].pnl += Number(t.pnl_pct);
+  });
+
+  const todayDate = new Date();
+  const weeksToShow = 12;
+  const totalDays = weeksToShow * 7;
+  const startDate = new Date(todayDate);
+  startDate.setDate(startDate.getDate() - totalDays + 1);
+  // Align start to a Sunday so columns line up as full weeks
+  startDate.setDate(startDate.getDate() - startDate.getDay());
+
+  const dayCells = [];
+  const cursor = new Date(startDate);
+  while (cursor <= todayDate) {
+    const iso = cursor.toISOString().slice(0, 10);
+    const day = byDate[iso];
+    let bucket = 'none';
+    if (day) {
+      const total = day.wins + day.losses;
+      const winRate = total ? day.wins / total : 0;
+      if (winRate >= 0.7) bucket = 'great';
+      else if (winRate >= 0.4) bucket = 'mixed';
+      else bucket = 'rough';
+    }
+    dayCells.push({ date: new Date(cursor), iso, day, bucket });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const heatColors = {
+    none: 'rgba(255,255,255,0.05)',
+    great: '#4ade80',
+    mixed: '#fbbf24',
+    rough: '#f87171'
+  };
+
+  // Group into week columns
+  const weekCols = [];
+  for (let i = 0; i < dayCells.length; i += 7) weekCols.push(dayCells.slice(i, i + 7));
+
+  const monthLabels = [];
+  weekCols.forEach((week, i) => {
+    const firstOfMonth = week.find(d => d.date.getDate() <= 7);
+    monthLabels.push(firstOfMonth ? firstOfMonth.date.toLocaleString('default', { month: 'short' }) : '');
+  });
+
+  const heatmapHTML = `
+    <div class="card">
+      <div style="font-weight:500;margin-bottom:4px;">Trade Calendar</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Last 12 weeks &middot; green = strong day, yellow = mixed, red = rough day</div>
+      <div style="overflow-x:auto;">
+        <div style="display:inline-flex;gap:3px;">
+          ${weekCols.map((week, wi) => `
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              ${week.map(d => `
+                <div title="${d.iso}${d.day ? ` — ${d.day.wins}W/${d.day.losses}L, ${d.day.pnl >= 0 ? '+' : ''}${Math.round(d.day.pnl*10)/10}%` : ' — no trades'}"
+                  style="width:13px;height:13px;border-radius:3px;background:${heatColors[d.bucket]};${d.date > todayDate ? 'opacity:0;' : ''}"></div>
+              `).join('')}
+            </div>`).join('')}
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--text-muted);">
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${heatColors.great};margin-right:4px;"></span>Strong day</span>
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${heatColors.mixed};margin-right:4px;"></span>Mixed</span>
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${heatColors.rough};margin-right:4px;"></span>Rough day</span>
+      </div>
+    </div>`;
+
   container.innerHTML = `
     <div class="fade-in" style="display:flex;flex-direction:column;gap:24px;">
+
+      ${heatmapHTML}
 
       <div class="card">
         <div style="font-weight:500;margin-bottom:4px;">Equity Curve</div>
