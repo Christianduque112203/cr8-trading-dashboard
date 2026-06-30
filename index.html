@@ -903,6 +903,7 @@ async function renderDashboard() {
       <button class="tabbtn ${state.tab==='log'?'active':''}" data-tab="log">Log a trade</button>
       <button class="tabbtn ${state.tab==='mine'?'active':''}" data-tab="mine">My trades</button>
       <button class="tabbtn ${state.tab==='charts'?'active':''}" data-tab="charts">Charts</button>
+      <button class="tabbtn ${state.tab==='calc'?'active':''}" data-tab="calc">Risk Calc</button>
       <button class="tabbtn ${state.tab==='board'?'active':''}" data-tab="board">Leaderboard</button>
       <button class="tabbtn ${state.tab==='badges'?'active':''}" data-tab="badges">Badges</button>
     </div>
@@ -923,6 +924,7 @@ async function renderDashboard() {
   if (state.tab === 'log') renderLogForm(content);
   else if (state.tab === 'mine') renderMine(content, myTrades);
   else if (state.tab === 'charts') renderCharts(content, myTrades);
+  else if (state.tab === 'calc') renderRiskCalc(content);
   else if (state.tab === 'badges') renderBadges(content, allTrades);
   else renderLeaderboard(content, leaderboard);
 }
@@ -1058,6 +1060,81 @@ function renderMine(container, trades) {
         </div>
       </div>`).join('') +
     `</div>`;
+}
+
+function renderRiskCalc(container) {
+  container.innerHTML = `
+    <div class="fade-in" style="max-width:480px;">
+      <p class="muted" style="font-size:13px;margin-bottom:16px;">Calculate the right position size for your next trade based on how much you're willing to risk.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div><label>Account size ($)</label><input type="number" id="calcAccount" placeholder="1000" style="width:100%;" /></div>
+        <div><label>Risk per trade (%)</label><input type="number" step="0.1" id="calcRiskPct" placeholder="1" style="width:100%;" /></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div><label>Entry price</label><input type="number" step="any" id="calcEntry" placeholder="1.0850" style="width:100%;" /></div>
+        <div><label>Stop loss price</label><input type="number" step="any" id="calcStop" placeholder="1.0800" style="width:100%;" /></div>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label>Instrument type</label>
+        <select id="calcType" style="width:100%;">
+          <option value="forex">Forex (standard lot = 100,000 units)</option>
+          <option value="crypto">Crypto / Stocks (units/shares)</option>
+        </select>
+      </div>
+
+      <button id="calcBtn" style="width:100%;">Calculate position size</button>
+
+      <div id="calcResult" style="margin-top:16px;"></div>
+    </div>`;
+
+  document.getElementById('calcBtn').onclick = () => {
+    const account = parseFloat(document.getElementById('calcAccount').value);
+    const riskPct = parseFloat(document.getElementById('calcRiskPct').value);
+    const entry = parseFloat(document.getElementById('calcEntry').value);
+    const stop = parseFloat(document.getElementById('calcStop').value);
+    const type = document.getElementById('calcType').value;
+    const resultEl = document.getElementById('calcResult');
+
+    if (!account || !riskPct || !entry || !stop || entry === stop) {
+      resultEl.innerHTML = `<p class="muted" style="font-size:13px;">Fill in all fields. Entry and stop loss must be different prices.</p>`;
+      return;
+    }
+
+    const riskAmount = account * (riskPct / 100);
+    const priceDistance = Math.abs(entry - stop);
+    const riskPerUnit = priceDistance;
+    const positionSize = riskAmount / riskPerUnit;
+
+    let sizeLabel, sizeValue;
+    if (type === 'forex') {
+      const lots = positionSize / 100000;
+      sizeLabel = 'Position size';
+      sizeValue = `${lots.toFixed(2)} lots <span style="color:var(--text-muted);font-size:12px;">(${Math.round(positionSize).toLocaleString()} units)</span>`;
+    } else {
+      sizeLabel = 'Position size';
+      sizeValue = `${positionSize.toFixed(4)} units/shares`;
+    }
+
+    resultEl.innerHTML = `
+      <div class="card fade-in" style="border-color:var(--gold);">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div>
+            <div style="font-size:12px;color:var(--text-muted);">Risk amount</div>
+            <div style="font-family:var(--font-mono);font-weight:500;font-size:18px;color:var(--text-danger);">$${riskAmount.toFixed(2)}</div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--text-muted);">${sizeLabel}</div>
+            <div style="font-family:var(--font-mono);font-weight:500;font-size:18px;color:var(--gold);">${sizeValue}</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:var(--text-muted);">
+          You're risking ${riskPct}% of your $${account.toLocaleString()} account ($${riskAmount.toFixed(2)}) with a ${priceDistance.toFixed(5)} price distance to your stop loss.
+        </div>
+      </div>`;
+  };
 }
 
 function renderCharts(container, trades) {
