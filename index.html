@@ -123,21 +123,46 @@
     color: var(--text-primary);
     border-radius: var(--radius);
     padding: 8px 10px;
+    transition: border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
   }
   input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--border-accent);
+    box-shadow: 0 0 0 3px rgba(212,175,55,0.12);
   }
   button {
     cursor: pointer;
     font-weight: 500;
+    position: relative;
+    overflow: hidden;
   }
   button:hover { border-color: var(--gold); color: var(--gold); }
-  button:active { transform: scale(0.98); }
+  button:active { transform: scale(0.96); }
+  .ripple-effect {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(212,175,55,0.35);
+    transform: scale(0);
+    animation: rippleAnim 0.55s ease-out;
+    pointer-events: none;
+  }
+  @keyframes rippleAnim {
+    to { transform: scale(2.6); opacity: 0; }
+  }
   label { font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px; }
-  .card { background: var(--surface-1); border-radius: var(--radius); padding: 1rem; border: 0.5px solid var(--border); }
+  .card {
+    background: var(--surface-1);
+    border-radius: var(--radius);
+    padding: 1rem;
+    border: 0.5px solid var(--border);
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+  }
   .muted { color: var(--text-muted); }
-  .tabbtn { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 8px 4px; }
+  .tabbtn { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 8px 4px; transition: border-color 0.22s ease, color 0.22s ease; }
   .tabbtn.active { border-bottom-color: var(--gold); font-weight: 500; color: var(--gold); }
   .pill { font-size: 12px; padding: 2px 8px; border-radius: var(--radius); background: var(--surface-2); color: var(--text-secondary); }
   .brand-mark { font-family: var(--font-mono); font-size: 12px; color: var(--gold); letter-spacing: 0.15em; }
@@ -149,7 +174,9 @@
     display: flex; align-items: center; justify-content: center;
     font-weight: 500; font-size: 14px; color: #1a1605;
     flex-shrink: 0;
+    transition: transform 0.2s ease;
   }
+  .avatar:hover { transform: scale(1.08) rotate(-4deg); }
   .avatar.sm { width: 28px; height: 28px; font-size: 11px; }
 
   @keyframes flicker {
@@ -265,6 +292,12 @@
   .badge-icon { font-size: 32px; margin-bottom: 6px; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   .fade-in { animation: fadeIn 0.25s ease-out; }
+  @keyframes valuePop {
+    0% { transform: scale(0.85); opacity: 0; }
+    60% { transform: scale(1.08); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+  .value-pop { animation: valuePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); display: inline-block; }
 
   .rank-1 { border: 1px solid var(--gold) !important; background: linear-gradient(90deg, rgba(212,175,55,0.12), var(--surface-1)) !important; }
   .rank-2 { border: 1px solid #c8c8d0 !important; }
@@ -1175,7 +1208,7 @@ function metricCard(label, value, color, standout) {
   const border = standout ? 'border-color:var(--gold);' : '';
   return `<div class="card" style="${border}">
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">${label}</div>
-    <div style="font-size:24px;font-weight:500;font-family:var(--font-mono);${style}">${value}</div>
+    <div class="value-pop" style="font-size:24px;font-weight:500;font-family:var(--font-mono);${style}">${value}</div>
   </div>`;
 }
 
@@ -1971,6 +2004,22 @@ function setupBackgroundFX() {
     fx.appendChild(el);
   }
 }
+
+// Global ripple effect on every button click — works automatically for buttons
+// added later too, since it's delegated to the document rather than bound per-button.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  const ripple = document.createElement('span');
+  ripple.className = 'ripple-effect';
+  ripple.style.width = ripple.style.height = size + 'px';
+  ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+  ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+  btn.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 600);
+});
 
 setupBackgroundFX();
 init();
