@@ -106,6 +106,38 @@
     100% { transform: scale(1.04) translate(1.5%, 1%); }
   }
   #app { max-width: 720px; margin: 0 auto; position: relative; z-index: 1; }
+
+  #market-sidebar {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    width: 220px;
+    z-index: 2;
+    display: none;
+  }
+  /* Only show the sidebar when there's genuinely room beside the 720px app column */
+  @media (min-width: 1240px) {
+    #market-sidebar { display: block; }
+  }
+  .session-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .session-row:last-child { border-bottom: none; }
+  .session-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .session-dot.open { background: #4ade80; box-shadow: 0 0 8px rgba(74,222,128,0.7); animation: livePulse 1.6s ease-in-out infinite; }
+  .session-dot.closed { background: #4a4330; }
+  .clock-display {
+    font-family: var(--font-mono);
+    font-size: 26px;
+    font-weight: 500;
+    color: var(--gold);
+    text-shadow: 0 0 12px rgba(212,175,55,0.4);
+    text-align: center;
+  }
   .card, .pill, input, select, textarea, button {
     -webkit-backdrop-filter: blur(6px);
     backdrop-filter: blur(6px);
@@ -513,6 +545,7 @@
   <div class="loader-boot" id="loaderBoot"></div>
 </div>
 <div id="app"></div>
+<div id="market-sidebar"></div>
 <script>
   setTimeout(function() {
     const appEl = document.getElementById('app');
@@ -744,6 +777,9 @@ async function init() {
 
 function renderLogin() {
   stopLiveTicker();
+  if (_marketInterval) { clearInterval(_marketInterval); _marketInterval = null; }
+  const ms = document.getElementById('market-sidebar');
+  if (ms) ms.innerHTML = '';
   app.innerHTML = `
     <div style="max-width:380px;margin:40px auto 0;" class="fade-in">
       <div style="text-align:center;margin-bottom:1.5rem;">
@@ -1379,6 +1415,7 @@ async function renderDashboard() {
     renderLogin();
   };
   startLiveTicker();
+  startMarketClock();
   const themeToggle = document.getElementById('themeToggle');
   if (themeToggle) {
     themeToggle.onclick = () => {
@@ -2235,6 +2272,71 @@ function showTierUpCelebration(tier) {
   document.getElementById('tierupCloseBtn').onclick = cleanup;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
   setTimeout(() => pieces.forEach(p => p.remove()), 4000);
+}
+
+// Market sessions clock — shows live UTC time and which major forex sessions are open.
+let _marketInterval = null;
+
+function getSessionStatus() {
+  // Session hours in UTC (approximate standard forex hours)
+  const sessions = [
+    { name: 'Sydney',   open: 21, close: 6 },
+    { name: 'Tokyo',    open: 0,  close: 9 },
+    { name: 'London',   open: 7,  close: 16 },
+    { name: 'New York', open: 12, close: 21 }
+  ];
+  const now = new Date();
+  const utcHour = now.getUTCHours() + now.getUTCMinutes() / 60;
+  const day = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
+
+  // Forex market is closed over the weekend (roughly Fri 21:00 UTC to Sun 21:00 UTC)
+  const weekendClosed = (day === 6) || (day === 0 && utcHour < 21) || (day === 5 && utcHour >= 21);
+
+  return sessions.map(s => {
+    let isOpen;
+    if (s.open < s.close) {
+      isOpen = utcHour >= s.open && utcHour < s.close;
+    } else {
+      // Session spans midnight (e.g. Sydney 21:00 -> 06:00)
+      isOpen = utcHour >= s.open || utcHour < s.close;
+    }
+    if (weekendClosed) isOpen = false;
+    return { name: s.name, open: isOpen };
+  });
+}
+
+function renderMarketSidebar() {
+  const el = document.getElementById('market-sidebar');
+  if (!el) return;
+
+  // Only show when a trader is logged in (dashboard visible)
+  if (!state.currentCode) { el.innerHTML = ''; return; }
+
+  const now = new Date();
+  const utcTime = now.toLocaleTimeString('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const sessions = getSessionStatus();
+  const anyOpen = sessions.some(s => s.open);
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="brand-mark" style="margin-bottom:8px;">MARKET SESSIONS</div>
+      <div class="clock-display">${utcTime}</div>
+      <div style="text-align:center;font-size:11px;color:var(--text-muted);margin-bottom:12px;">UTC &middot; ${anyOpen ? 'Markets open' : 'Markets closed'}</div>
+      ${sessions.map(s => `
+        <div class="session-row">
+          <span style="font-size:13px;color:${s.open ? 'var(--text-primary)' : 'var(--text-muted)'};">${s.name}</span>
+          <span style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--text-muted);">${s.open ? 'Open' : 'Closed'}</span>
+            <span class="session-dot ${s.open ? 'open' : 'closed'}"></span>
+          </span>
+        </div>`).join('')}
+    </div>`;
+}
+
+function startMarketClock() {
+  renderMarketSidebar();
+  if (_marketInterval) clearInterval(_marketInterval);
+  _marketInterval = setInterval(renderMarketSidebar, 1000);
 }
 
 function setupBackgroundFX() {
