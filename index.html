@@ -91,12 +91,13 @@
     width: 110%; height: 110%;
     background: url('cr8-bg.jpg') center / cover no-repeat;
     z-index: -2;
+    opacity: 0.08;
     animation: kenburns 36s ease-in-out infinite alternate;
   }
   #bg-overlay {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: linear-gradient(180deg, rgba(5,5,5,0.82), rgba(5,5,5,0.93));
+    background: linear-gradient(180deg, rgba(5,5,5,0.92), rgba(5,5,5,0.97));
     z-index: -1;
   }
   @keyframes kenburns {
@@ -231,7 +232,7 @@
   }
   .tilt-card.tilting .tilt-glare { opacity: 1; }
   .muted { color: var(--text-muted); }
-  .tabbtn { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 8px 4px; transition: border-color 0.22s ease, color 0.22s ease; }
+  .tabbtn { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 8px 4px; transition: border-color 0.22s ease, color 0.22s ease; white-space: nowrap; flex-shrink: 0; }
   .tabbtn.active { border-bottom-color: var(--gold); font-weight: 500; color: var(--gold); }
   .pill { font-size: 12px; padding: 2px 8px; border-radius: var(--radius); background: var(--surface-2); color: var(--text-secondary); }
   .brand-mark { font-family: var(--font-mono); font-size: 12px; color: var(--gold); letter-spacing: 0.15em; }
@@ -1358,14 +1359,14 @@ async function renderDashboard() {
     ${drawdownAlert}
     ${announcementBanner}
     ${streakBanner}
-    <div style="display:flex;gap:8px;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);">
-      <button class="tabbtn ${state.tab==='log'?'active':''}" data-tab="log">Log a trade</button>
-      <button class="tabbtn ${state.tab==='mine'?'active':''}" data-tab="mine">My trades</button>
-      <button class="tabbtn ${state.tab==='charts'?'active':''}" data-tab="charts">Charts</button>
-      <button class="tabbtn ${state.tab==='calc'?'active':''}" data-tab="calc">Risk Calc</button>
-      <button class="tabbtn ${state.tab==='board'?'active':''}" data-tab="board">Leaderboard</button>
-      <button class="tabbtn ${state.tab==='badges'?'active':''}" data-tab="badges">Badges</button>
-      <button class="tabbtn ${state.tab==='bests'?'active':''}" data-tab="bests">Personal Bests</button>
+    <div style="display:flex;gap:8px;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
+      <button class="tabbtn ${state.tab==='log'?'active':''}" data-tab="log">➕ Log Trade</button>
+      <button class="tabbtn ${state.tab==='mine'?'active':''}" data-tab="mine">📜 Journal</button>
+      <button class="tabbtn ${state.tab==='charts'?'active':''}" data-tab="charts">📈 Charts</button>
+      <button class="tabbtn ${state.tab==='calc'?'active':''}" data-tab="calc">🧮 Risk</button>
+      <button class="tabbtn ${state.tab==='board'?'active':''}" data-tab="board">🏆 Leaderboard</button>
+      <button class="tabbtn ${state.tab==='badges'?'active':''}" data-tab="badges">🎖 Badges</button>
+      <button class="tabbtn ${state.tab==='bests'?'active':''}" data-tab="bests">⭐ Personal Best</button>
     </div>
     <div id="tabContent"></div>
   `;
