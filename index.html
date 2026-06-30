@@ -950,6 +950,17 @@ async function renderDashboard() {
   }
   localStorage.setItem(tierKey, myTier.name);
 
+  // Detect newly unlocked badges since last visit, play a chime if any are new
+  const myBadges = computeBadges(allTrades, state.currentCode);
+  const unlockedIds = myBadges.filter(b => b.unlocked).map(b => b.id);
+  const badgeKey = 'cr8_seen_badges_' + state.currentCode;
+  const seenBadges = JSON.parse(localStorage.getItem(badgeKey) || '[]');
+  const newlyUnlocked = unlockedIds.filter(id => !seenBadges.includes(id));
+  if (seenBadges.length > 0 && newlyUnlocked.length > 0) {
+    setTimeout(() => playBadgeChime(), 60);
+  }
+  localStorage.setItem(badgeKey, JSON.stringify(unlockedIds));
+
   // Fetch the latest mentor announcement, if any
   let announcementBanner = '';
   let latestAnnouncementId = null;
@@ -1182,6 +1193,8 @@ function renderLogForm(container) {
 
     const { error: insertErr } = await sb.from('trades').insert(payload);
     if (insertErr) { msg.textContent = 'Could not save trade. Try again.'; console.error(insertErr); return; }
+
+    if (payload.result === 'win') playWinChime();
 
     state.tab = 'mine';
     renderDashboard();
@@ -1585,7 +1598,58 @@ function renderLeaderboard(container, leaderboard) {
   });
 }
 
+// Lightweight sound effects using the Web Audio API — no external audio files needed.
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) {
+    try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { return null; }
+  }
+  if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  return _audioCtx;
+}
+
+function playTone(freq, startTime, duration, ctx, type, gainPeak) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0, ctx.currentTime + startTime);
+  gain.gain.linearRampToValueAtTime(gainPeak || 0.12, ctx.currentTime + startTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(ctx.currentTime + startTime);
+  osc.stop(ctx.currentTime + startTime + duration);
+}
+
+function playWinChime() {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  playTone(523.25, 0,    0.18, ctx, 'sine', 0.1);  // C5
+  playTone(659.25, 0.08, 0.22, ctx, 'sine', 0.1);  // E5
+  playTone(783.99, 0.16, 0.3,  ctx, 'sine', 0.12); // G5
+}
+
+function playBadgeChime() {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  playTone(440,    0,    0.12, ctx, 'triangle', 0.1);
+  playTone(659.25, 0.1,  0.2,  ctx, 'triangle', 0.12);
+}
+
+function playRankUpFanfare() {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  playTone(392,    0,    0.15, ctx, 'sine', 0.1);   // G4
+  playTone(523.25, 0.12, 0.15, ctx, 'sine', 0.1);   // C5
+  playTone(659.25, 0.24, 0.15, ctx, 'sine', 0.1);   // E5
+  playTone(783.99, 0.36, 0.4,  ctx, 'sine', 0.14);  // G5 (held)
+  playTone(1046.5, 0.36, 0.4,  ctx, 'triangle', 0.08); // C6 shimmer
+}
+
 function showTierUpCelebration(tier) {
+  playRankUpFanfare();
   const overlay = document.createElement('div');
   overlay.id = 'tierup-overlay';
   overlay.innerHTML = `
