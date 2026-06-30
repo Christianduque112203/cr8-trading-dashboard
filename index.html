@@ -204,6 +204,57 @@
     0% { transform: translateY(0) rotate(0deg); opacity: 1; }
     100% { transform: translateY(110vh) rotate(540deg); opacity: 0.3; }
   }
+
+  #live-ticker {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 34px;
+    background: rgba(10,10,10,0.92);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    overflow: hidden;
+    z-index: 50;
+    display: flex; align-items: center;
+  }
+  #live-ticker .ticker-label {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--gold);
+    letter-spacing: 0.1em;
+    padding: 0 12px;
+    border-right: 1px solid var(--border);
+    height: 100%;
+    display: flex; align-items: center;
+    background: rgba(212,175,55,0.06);
+  }
+  #live-ticker .ticker-label .live-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: #4ade80; margin-right: 6px;
+    animation: livePulse 1.5s ease-in-out infinite;
+  }
+  @keyframes livePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+  #live-ticker .ticker-track {
+    display: flex; gap: 36px;
+    white-space: nowrap;
+    animation: liveTickerScroll 40s linear infinite;
+    padding-left: 100%;
+  }
+  @keyframes liveTickerScroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-100%); }
+  }
+  #live-ticker .ticker-item {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  body.has-live-ticker { padding-bottom: 50px; }
   .badge-card {
     text-align: center; padding: 1.2rem 0.8rem;
     border-radius: var(--radius); border: 0.5px solid var(--border);
@@ -463,6 +514,7 @@ async function init() {
 }
 
 function renderLogin() {
+  stopLiveTicker();
   app.innerHTML = `
     <div style="max-width:380px;margin:40px auto 0;" class="fade-in">
       <div style="text-align:center;margin-bottom:1.5rem;">
@@ -1090,8 +1142,10 @@ async function renderDashboard() {
     sessionStorage.removeItem('cr8_code');
     sessionStorage.removeItem('cr8_nick');
     state.currentCode = null;
+    stopLiveTicker();
     renderLogin();
   };
+  startLiveTicker();
   const dismissBtn = document.getElementById('dismissAnnouncement');
   if (dismissBtn && latestAnnouncementId) {
     dismissBtn.onclick = () => {
@@ -1664,6 +1718,63 @@ function playRankUpFanfare() {
   playTone(659.25, 0.24, 0.15, ctx, 'sine', 0.1);   // E5
   playTone(783.99, 0.36, 0.4,  ctx, 'sine', 0.14);  // G5 (held)
   playTone(1046.5, 0.36, 0.4,  ctx, 'triangle', 0.08); // C6 shimmer
+}
+
+// Live activity ticker — shows recent trades across all traders, anonymized
+// (nickname + instrument + win/loss only, never exact P&L, notes, or screenshots).
+let _liveTickerInterval = null;
+
+function stopLiveTicker() {
+  if (_liveTickerInterval) { clearInterval(_liveTickerInterval); _liveTickerInterval = null; }
+  const el = document.getElementById('live-ticker');
+  if (el) el.remove();
+  document.body.classList.remove('has-live-ticker');
+}
+
+async function refreshLiveTicker() {
+  let el = document.getElementById('live-ticker');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'live-ticker';
+    document.body.appendChild(el);
+    document.body.classList.add('has-live-ticker');
+  }
+
+  try {
+    const [{ data: recentTrades }, { data: traders }] = await Promise.all([
+      sb.from('trades').select('*').order('created_at', { ascending: false }),
+      sb.from('traders').select('*')
+    ]);
+
+    const traderMap = {};
+    (traders || []).forEach(t => traderMap[t.code] = t.nickname);
+
+    const items = (recentTrades || []).slice(0, 20).map(t => {
+      const nick = esc(traderMap[t.trader_code] || 'A trader');
+      const isWin = t.result === 'win';
+      const dot = isWin ? '🟢' : '🔴';
+      const verb = isWin ? 'closed a win on' : 'closed a loss on';
+      const instrument = esc(t.instrument || 'a trade');
+      return `<span class="ticker-item">${dot} <strong style="color:var(--text-primary);">${nick}</strong> ${verb} ${instrument}</span>`;
+    });
+
+    if (items.length === 0) {
+      el.innerHTML = `<div class="ticker-label"><span class="live-dot"></span>LIVE</div>
+        <div class="ticker-track"><span class="ticker-item">No trades logged yet today — be the first.</span></div>`;
+      return;
+    }
+
+    // Duplicate the list so the scroll loop feels continuous
+    const trackHtml = items.concat(items).join('<span style="color:var(--border);">•</span>');
+    el.innerHTML = `<div class="ticker-label"><span class="live-dot"></span>LIVE</div>
+      <div class="ticker-track">${trackHtml}</div>`;
+  } catch (e) { /* fail silently, ticker is non-critical */ }
+}
+
+function startLiveTicker() {
+  stopLiveTicker();
+  refreshLiveTicker();
+  _liveTickerInterval = setInterval(refreshLiveTicker, 20000);
 }
 
 function showTierUpCelebration(tier) {
