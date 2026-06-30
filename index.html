@@ -1786,6 +1786,43 @@ function renderCharts(container, trades) {
 
   const isPositive = equityData[equityData.length - 1] >= 0;
 
+  // Day-of-week consistency heatmap
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const byDayOfWeek = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+  trades.forEach(t => {
+    const d = new Date(t.trade_date + 'T00:00:00');
+    byDayOfWeek[d.getDay()].push(t);
+  });
+  // Trading days Mon-Fri for forex focus, but show any day with trades
+  const weekdayRows = [1, 2, 3, 4, 5].map(dow => {
+    const dayTrades = byDayOfWeek[dow];
+    const dots = dayTrades.map(t => t.result === 'win' ? '🟢' : '🔴').join('');
+    const wins = dayTrades.filter(t => t.result === 'win').length;
+    const wr = dayTrades.length ? Math.round((wins / dayTrades.length) * 100) : 0;
+    return { name: dayNames[dow], dots: dots || '—', count: dayTrades.length, winRate: wr };
+  });
+
+  // Best trading hours — group by session based on trade_time (local clock the trader logged)
+  function sessionForHour(h) {
+    if (h >= 0 && h < 9) return 'Asian';
+    if (h >= 7 && h < 12) return 'London';
+    if (h >= 12 && h < 16) return 'London/NY';
+    if (h >= 16 && h < 21) return 'NY Open';
+    return 'Off-hours';
+  }
+  const sessionStats = {};
+  trades.forEach(t => {
+    const hour = parseInt(String(t.trade_time || '0').split(':')[0], 10);
+    if (isNaN(hour)) return;
+    const session = sessionForHour(hour);
+    if (!sessionStats[session]) sessionStats[session] = { wins: 0, total: 0 };
+    sessionStats[session].total++;
+    if (t.result === 'win') sessionStats[session].wins++;
+  });
+  const sessionRows = Object.entries(sessionStats)
+    .map(([name, s]) => ({ name, winRate: Math.round((s.wins / s.total) * 100), count: s.total }))
+    .sort((a, b) => b.winRate - a.winRate);
+
   // Build trade calendar heatmap — last 12 weeks, GitHub-style
   const byDate = {};
   trades.forEach(t => {
@@ -1879,6 +1916,37 @@ function renderCharts(container, trades) {
         <div style="font-weight:500;margin-bottom:4px;">Discipline Trend</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Rolling 5-trade discipline rate</div>
         <canvas id="discChart" height="120"></canvas>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:500;margin-bottom:4px;">Weekly Consistency</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Your trades by day of week 🟢 win 🔴 loss</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          ${weekdayRows.map(r => `
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);width:36px;">${r.name}</span>
+              <span style="flex:1;font-size:15px;letter-spacing:1px;word-break:break-all;">${r.dots}</span>
+              <span style="font-family:var(--font-mono);font-size:12px;color:${r.count ? (r.winRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)') : 'var(--text-muted)'};width:54px;text-align:right;">${r.count ? r.winRate + '%' : ''}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:500;margin-bottom:4px;">Best Trading Hours</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Win rate by market session — find when you perform best</div>
+        ${sessionRows.length === 0 ? `<p class="muted" style="font-size:13px;">Log trades with times to see this.</p>` : `
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          ${sessionRows.map(s => `
+            <div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span style="font-size:13px;">${esc(s.name)} <span style="color:var(--text-muted);font-size:11px;">(${s.count} trade${s.count !== 1 ? 's' : ''})</span></span>
+                <span style="font-family:var(--font-mono);font-weight:500;font-size:13px;color:${s.winRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)'};">${s.winRate}%</span>
+              </div>
+              <div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;">
+                <div style="height:100%;width:${s.winRate}%;background:linear-gradient(90deg, #8a6d1f, var(--gold));border-radius:4px;transition:width 0.6s ease;"></div>
+              </div>
+            </div>`).join('')}
+        </div>`}
       </div>
 
     </div>`;
