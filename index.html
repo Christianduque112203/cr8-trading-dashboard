@@ -428,6 +428,17 @@
   .badge-icon { font-size: 32px; margin-bottom: 6px; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   .fade-in { animation: fadeIn 0.25s ease-out; }
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(24px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-24px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .slide-right { animation: slideInRight 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+  .slide-left { animation: slideInLeft 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+  #tabContent { will-change: transform, opacity; }
   @keyframes valuePop {
     0% { transform: scale(0.85); opacity: 0; }
     60% { transform: scale(1.08); opacity: 1; }
@@ -670,7 +681,8 @@ let state = {
   sortBy: 'blend',
   imgFile: null,
   emotionalVal: false,
-  adminPass: null
+  adminPass: null,
+  slideDir: null
 };
 
 const app = document.getElementById('app');
@@ -1361,8 +1373,15 @@ async function renderDashboard() {
       renderDashboard();
     };
   }
+  const TAB_ORDER = ['log', 'mine', 'charts', 'calc', 'board', 'badges', 'bests'];
   app.querySelectorAll('.tabbtn').forEach(b => {
-    b.onclick = () => { state.tab = b.dataset.tab; renderDashboard(); };
+    b.onclick = () => {
+      const fromIndex = TAB_ORDER.indexOf(state.tab);
+      const toIndex = TAB_ORDER.indexOf(b.dataset.tab);
+      state.slideDir = toIndex >= fromIndex ? 'right' : 'left';
+      state.tab = b.dataset.tab;
+      renderDashboard();
+    };
   });
 
   const content = document.getElementById('tabContent');
@@ -1373,6 +1392,17 @@ async function renderDashboard() {
   else if (state.tab === 'badges') renderBadges(content, allTrades);
   else if (state.tab === 'bests') renderPersonalBests(content, myTrades);
   else renderLeaderboard(content, leaderboard);
+
+  // Apply directional slide to whatever the render function just placed inside
+  if (state.slideDir) {
+    const inner = content.firstElementChild;
+    if (inner) {
+      inner.classList.remove('fade-in', 'slide-left', 'slide-right');
+      void inner.offsetWidth;
+      inner.classList.add(state.slideDir === 'right' ? 'slide-right' : 'slide-left');
+    }
+    state.slideDir = null;
+  }
 }
 
 function metricCard(label, value, color, standout) {
