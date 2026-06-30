@@ -1656,6 +1656,7 @@ async function renderDashboard() {
       <button class="tabbtn ${state.tab==='board'?'active':''}" data-tab="board">🏆 Leaderboard</button>
       <button class="tabbtn ${state.tab==='badges'?'active':''}" data-tab="badges">🎖 Badges</button>
       <button class="tabbtn ${state.tab==='bests'?'active':''}" data-tab="bests">⭐ Personal Best</button>
+      <button class="tabbtn ${state.tab==='dna'?'active':''}" data-tab="dna">🧬 Trader DNA</button>
     </div>
     <div id="tabContent"></div>
   `;
@@ -1684,7 +1685,7 @@ async function renderDashboard() {
       renderDashboard();
     };
   }
-  const TAB_ORDER = ['log', 'mine', 'charts', 'calc', 'board', 'badges', 'bests'];
+  const TAB_ORDER = ['log', 'mine', 'charts', 'calc', 'board', 'badges', 'bests', 'dna'];
   app.querySelectorAll('.tabbtn').forEach(b => {
     b.onclick = () => {
       const fromIndex = TAB_ORDER.indexOf(state.tab);
@@ -1702,6 +1703,7 @@ async function renderDashboard() {
   else if (state.tab === 'calc') renderRiskCalc(content);
   else if (state.tab === 'badges') renderBadges(content, allTrades);
   else if (state.tab === 'bests') renderPersonalBests(content, myTrades);
+  else if (state.tab === 'dna') renderTraderDNA(content, myTrades, allTrades);
   else renderLeaderboard(content, leaderboard);
 
   // Apply directional slide to whatever the render function just placed inside
@@ -2604,6 +2606,137 @@ function renderCharts(container, trades) {
       }
     }
   });
+}
+
+function renderTraderDNA(container, trades, allTrades) {
+  if (trades.length < 5) {
+    container.innerHTML = `<div class="fade-in"><p class="muted">Your Trader DNA unlocks after 5 logged trades. The more you log, the sharper your profile becomes. (${trades.length}/5)</p></div>`;
+    return;
+  }
+
+  const tier = computeTier(allTrades, state.currentCode);
+  const total = trades.length;
+  const wins = trades.filter(t => t.result === 'win').length;
+  const winRate = Math.round((wins / total) * 100);
+  const disciplined = trades.filter(t => !t.emotional).length;
+  const disciplineRate = Math.round((disciplined / total) * 100);
+  const avgQuality = Math.round(trades.map(t => computeTradeQuality(t).overall).reduce((a, b) => a + b, 0) / total);
+
+  // Helper: win rate for a filtered subset
+  function wrOf(subset) {
+    if (!subset.length) return null;
+    return Math.round((subset.filter(t => t.result === 'win').length / subset.length) * 100);
+  }
+
+  // Best session
+  function sessionForHour(h) {
+    if (h >= 0 && h < 9) return 'Asian';
+    if (h >= 7 && h < 12) return 'London';
+    if (h >= 12 && h < 16) return 'London/NY';
+    if (h >= 16 && h < 21) return 'NY';
+    return 'Off-hours';
+  }
+  const sessionGroups = {};
+  trades.forEach(t => {
+    const h = parseInt(String(t.trade_time || '').split(':')[0], 10);
+    if (isNaN(h)) return;
+    const s = sessionForHour(h);
+    (sessionGroups[s] = sessionGroups[s] || []).push(t);
+  });
+  let bestSession = null;
+  Object.entries(sessionGroups).forEach(([name, arr]) => {
+    if (arr.length >= 3) {
+      const wr = wrOf(arr);
+      if (!bestSession || wr > bestSession.wr) bestSession = { name, wr, count: arr.length };
+    }
+  });
+
+  // Best instrument
+  const instGroups = {};
+  trades.forEach(t => { if (t.instrument) (instGroups[t.instrument.toUpperCase()] = instGroups[t.instrument.toUpperCase()] || []).push(t); });
+  let bestInstrument = null;
+  Object.entries(instGroups).forEach(([name, arr]) => {
+    if (arr.length >= 3) { const wr = wrOf(arr); if (!bestInstrument || wr > bestInstrument.wr) bestInstrument = { name, wr, count: arr.length }; }
+  });
+
+  // Most broken rule
+  const violationCounts = {};
+  trades.forEach(t => (t.rule_violations || []).forEach(v => violationCounts[v] = (violationCounts[v] || 0) + 1));
+  const topViolation = Object.entries(violationCounts).sort((a, b) => b[1] - a[1])[0];
+
+  // Trader archetype — derived from dominant traits
+  let archetype, archetypeDesc, archetypeIcon;
+  if (disciplineRate >= 80 && winRate >= 55) { archetype = 'The Disciplined Sniper'; archetypeDesc = 'You wait, you strike, you follow your rules. Precision over frequency.'; archetypeIcon = '🎯'; }
+  else if (disciplineRate >= 80) { archetype = 'The Process Master'; archetypeDesc = 'Your discipline is elite. The wins will follow the process.'; archetypeIcon = '🧘'; }
+  else if (winRate >= 60 && disciplineRate < 60) { archetype = 'The Gifted Gambler'; archetypeDesc = 'You win often, but your discipline lags. Imagine your results with control.'; archetypeIcon = '🎰'; }
+  else if (total >= 40 && avgQuality >= 70) { archetype = 'The Grinder'; archetypeDesc = 'High volume, solid execution. You show up and put in the reps.'; archetypeIcon = '⚙️'; }
+  else if (winRate < 45 && disciplineRate >= 65) { archetype = 'The Student'; archetypeDesc = 'Disciplined but still finding your edge. You are exactly where growth happens.'; archetypeIcon = '📚'; }
+  else { archetype = 'The Developing Trader'; archetypeDesc = 'Your style is still forming. Keep logging — your identity will sharpen.'; archetypeIcon = '🌱'; }
+
+  container.innerHTML = `
+    <div class="fade-in" style="display:flex;flex-direction:column;gap:16px;">
+
+      <div class="card tilt-card" style="border-color:var(--gold);background:linear-gradient(135deg, rgba(212,175,55,0.1), var(--surface-1));text-align:center;">
+        <div style="font-size:48px;">${archetypeIcon}</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--gold);letter-spacing:0.15em;margin-top:4px;">YOUR TRADER ARCHETYPE</div>
+        <h2 style="font-size:24px;margin-top:4px;">${archetype}</h2>
+        <p style="font-size:13px;color:var(--text-secondary);margin-top:6px;max-width:340px;margin-left:auto;margin-right:auto;">${archetypeDesc}</p>
+        <div style="display:inline-flex;align-items:center;gap:6px;margin-top:12px;padding:4px 14px;border-radius:999px;background:${tier.color}1a;border:1px solid ${tier.color};">
+          <span>${tier.icon}</span><span style="font-size:13px;font-weight:500;color:${tier.color};">${tier.name}</span>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">
+        <div class="card tilt-card">
+          <div style="font-size:12px;color:var(--text-secondary);">Execution Quality</div>
+          <div class="value-pop" style="font-family:var(--font-mono);font-size:24px;font-weight:500;color:var(--gold);margin-top:4px;">${avgQuality}<span style="font-size:13px;color:var(--text-muted);">/100</span></div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">How well you trade your plan</div>
+        </div>
+        <div class="card tilt-card">
+          <div style="font-size:12px;color:var(--text-secondary);">Discipline</div>
+          <div class="value-pop" style="font-family:var(--font-mono);font-size:24px;font-weight:500;color:${disciplineRate>=70?'var(--text-success)':disciplineRate>=50?'#fbbf24':'var(--text-danger)'};margin-top:4px;">${disciplineRate}%</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Trades following your rules</div>
+        </div>
+        <div class="card tilt-card">
+          <div style="font-size:12px;color:var(--text-secondary);">Win Rate</div>
+          <div class="value-pop" style="font-family:var(--font-mono);font-size:24px;font-weight:500;color:${winRate>=50?'var(--text-success)':'var(--text-danger)'};margin-top:4px;">${winRate}%</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Across ${total} trades</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:500;margin-bottom:12px;">What defines you</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="font-size:20px;">💪</div>
+            <div>
+              <div style="font-size:12px;color:var(--text-muted);">Your superpower</div>
+              <div style="font-size:14px;">${bestInstrument ? `Trading <strong>${esc(bestInstrument.name)}</strong> — ${bestInstrument.wr}% win rate` : bestSession ? `<strong>${esc(bestSession.name)} session</strong> — ${bestSession.wr}% win rate` : 'Still emerging — keep logging with instrument & time filled in'}</div>
+            </div>
+          </div>
+          ${bestSession ? `
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="font-size:20px;">⏰</div>
+            <div>
+              <div style="font-size:12px;color:var(--text-muted);">When you shine</div>
+              <div style="font-size:14px;"><strong>${esc(bestSession.name)} session</strong> — ${bestSession.wr}% win rate over ${bestSession.count} trades</div>
+            </div>
+          </div>` : ''}
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="font-size:20px;">${topViolation ? '⚠️' : '✨'}</div>
+            <div>
+              <div style="font-size:12px;color:var(--text-muted);">Your kryptonite</div>
+              <div style="font-size:14px;">${topViolation ? `<strong>${esc(topViolation[0])}</strong> — your most-broken rule (${topViolation[1]}\u00d7)` : 'No recurring rule violations. Clean discipline.'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="text-align:center;">
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">Your Trader DNA evolves with every trade you log.<br>Check back as your profile sharpens. 🧬</div>
+      </div>
+
+    </div>`;
 }
 
 function renderPersonalBests(container, trades) {
