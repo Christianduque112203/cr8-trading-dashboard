@@ -2562,6 +2562,43 @@ function renderCharts(container, trades) {
     .sort((a, b) => b.count - a.count);
   const totalViolations = Object.values(violationCounts).reduce((a, b) => a + b, 0);
 
+  // ===== Emotion Analytics =====
+  // Detects emotional keywords from the Trade Story "feeling" field + the
+  // discipline flag, and correlates each emotion with win rate / avg P&L.
+  const EMOTION_MAP = [
+    { key: 'confident', label: 'Confident', icon: '😎', words: ['confident', 'calm', 'sure', 'clear', 'patient', 'focused', 'disciplined'] },
+    { key: 'fomo', label: 'FOMO / Rushed', icon: '😰', words: ['fomo', 'rush', 'rushed', 'chase', 'chasing', 'hurry', 'impatient', 'missed'] },
+    { key: 'anxious', label: 'Anxious / Fearful', icon: '😬', words: ['anxious', 'nervous', 'fear', 'fearful', 'scared', 'worried', 'unsure', 'hesitant', 'doubt'] },
+    { key: 'greedy', label: 'Greedy', icon: '🤑', words: ['greedy', 'greed', 'overconfident', 'cocky', 'euphoric'] },
+    { key: 'revenge', label: 'Angry / Revenge', icon: '😡', words: ['revenge', 'angry', 'frustrated', 'tilt', 'tilted', 'mad', 'emotional'] },
+    { key: 'bored', label: 'Bored / Forcing', icon: '😴', words: ['bored', 'boredom', 'forced', 'forcing', 'nothing'] }
+  ];
+  const emotionStats = {};
+  trades.forEach(t => {
+    const feel = String(t.story_feeling || '').toLowerCase();
+    if (!feel) return;
+    EMOTION_MAP.forEach(em => {
+      if (em.words.some(w => feel.includes(w))) {
+        if (!emotionStats[em.key]) emotionStats[em.key] = { label: em.label, icon: em.icon, trades: 0, wins: 0, pnl: 0 };
+        emotionStats[em.key].trades++;
+        if (t.result === 'win') emotionStats[em.key].wins++;
+        emotionStats[em.key].pnl += Number(t.pnl_pct) || 0;
+      }
+    });
+  });
+  const emotionRows = Object.values(emotionStats)
+    .map(e => ({ ...e, winRate: Math.round((e.wins / e.trades) * 100), avgPnl: Math.round((e.pnl / e.trades) * 10) / 10 }))
+    .sort((a, b) => b.winRate - a.winRate);
+  const feelingsLogged = trades.filter(t => t.story_feeling).length;
+
+  // Disciplined vs emotional comparison (from the rules toggle)
+  const discT = trades.filter(t => !t.emotional);
+  const emoT = trades.filter(t => t.emotional);
+  const discWin = discT.length ? Math.round((discT.filter(t => t.result === 'win').length / discT.length) * 100) : null;
+  const emoWin = emoT.length ? Math.round((emoT.filter(t => t.result === 'win').length / emoT.length) * 100) : null;
+  const discAvg = discT.length ? Math.round((discT.reduce((a, t) => a + (Number(t.pnl_pct) || 0), 0) / discT.length) * 10) / 10 : null;
+  const emoAvg = emoT.length ? Math.round((emoT.reduce((a, t) => a + (Number(t.pnl_pct) || 0), 0) / emoT.length) * 10) / 10 : null;
+
   // ===== Profit by Strategy =====
   const stratGroups = {};
   trades.forEach(t => {
@@ -2780,6 +2817,46 @@ function renderCharts(container, trades) {
             </div>`).join('')}
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:12px;">${totalViolations} total violation${totalViolations !== 1 ? 's' : ''} across ${trades.length} trades.</div>`}
+      </div>
+
+      <div class="card">
+        <div style="font-weight:500;margin-bottom:4px;">Emotion Analytics</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">How your state of mind affects your results — the inner game</div>
+
+        ${(discWin !== null && emoWin !== null) ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:${emotionRows.length ? '18px' : '0'};">
+          <div class="card" style="background:var(--bg-success);border:none;">
+            <div style="font-size:12px;color:var(--text-secondary);">🧘 Disciplined trades</div>
+            <div style="font-family:var(--font-mono);font-weight:500;font-size:20px;color:var(--text-success);margin-top:4px;">${discWin}% win</div>
+            <div style="font-size:11px;color:var(--text-muted);">avg ${discAvg >= 0 ? '+' : ''}${discAvg}% · ${discT.length} trades</div>
+          </div>
+          <div class="card" style="background:var(--bg-danger);border:none;">
+            <div style="font-size:12px;color:var(--text-secondary);">😤 Emotional trades</div>
+            <div style="font-family:var(--font-mono);font-weight:500;font-size:20px;color:var(--text-danger);margin-top:4px;">${emoWin}% win</div>
+            <div style="font-size:11px;color:var(--text-muted);">avg ${emoAvg >= 0 ? '+' : ''}${emoAvg}% · ${emoT.length} trades</div>
+          </div>
+        </div>
+        ${(discWin !== null && emoWin !== null && discWin - emoWin >= 10) ? `<div style="font-size:12px;color:var(--gold);margin-bottom:${emotionRows.length ? '18px' : '0'};">💡 You win ${discWin - emoWin} points more often when you trade with discipline. The data is clear.</div>` : ''}
+        ` : ''}
+
+        ${emotionRows.length ? `
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">By feeling (from your Trade Stories)</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            ${emotionRows.map(e => `
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="font-size:20px;width:28px;text-align:center;flex-shrink:0;">${e.icon}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                    <span style="font-size:13px;">${esc(e.label)} <span style="color:var(--text-muted);font-size:11px;">${e.trades}\u00d7</span></span>
+                    <span style="font-family:var(--font-mono);font-size:13px;color:${e.winRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)'};">${e.winRate}% · ${e.avgPnl >= 0 ? '+' : ''}${e.avgPnl}%</span>
+                  </div>
+                  <div style="height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;">
+                    <div style="height:100%;width:${e.winRate}%;background:${e.winRate >= 50 ? 'linear-gradient(90deg,#1f5c33,var(--text-success))' : 'linear-gradient(90deg,var(--text-danger),#7a2020)'};border-radius:3px;"></div>
+                  </div>
+                </div>
+              </div>`).join('')}
+          </div>
+        ` : `<p class="muted" style="font-size:13px;${(discWin !== null) ? 'margin-top:14px;' : ''}">Fill in "What were you feeling?" on your trades (in Log Trade) to unlock emotion-by-feeling insights. ${feelingsLogged}/${trades.length} trades have a feeling logged.</p>`}
       </div>
 
       <div class="card">
