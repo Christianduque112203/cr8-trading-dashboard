@@ -138,6 +138,36 @@
     text-shadow: 0 0 12px rgba(212,175,55,0.4);
     text-align: center;
   }
+  .prob-check {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease;
+    background: var(--surface-2);
+  }
+  .prob-check:hover { border-color: var(--gold); }
+  .prob-check.checked { border-color: var(--gold); background: rgba(212,175,55,0.08); }
+  .prob-check .box {
+    width: 18px; height: 18px; border-radius: 5px;
+    border: 1.5px solid var(--border-strong);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: #1a1605;
+    transition: background 0.18s ease, border-color 0.18s ease;
+  }
+  .prob-check.checked .box { background: var(--gold); border-color: var(--gold); }
+  .prob-meter-track {
+    height: 12px; background: var(--surface-2); border-radius: 6px; overflow: hidden; margin-top: 4px;
+  }
+  .prob-meter-fill {
+    height: 100%; border-radius: 6px;
+    background: linear-gradient(90deg, #f87171, #fbbf24, #4ade80);
+    background-size: 300% 100%;
+    transition: width 0.35s ease;
+  }
   .card, .pill, input, select, textarea, button {
     -webkit-backdrop-filter: blur(6px);
     backdrop-filter: blur(6px);
@@ -736,7 +766,8 @@ let state = {
   imgFile: null,
   emotionalVal: false,
   adminPass: null,
-  slideDir: null
+  slideDir: null,
+  setupScore: 0
 };
 
 const app = document.getElementById('app');
@@ -1500,7 +1531,23 @@ function renderLogForm(container) {
         <button id="disciplinedBtn" style="flex:1;border:2px solid var(--border-accent);">Followed rules</button>
         <button id="emotionalBtn" style="flex:1;">Got emotional</button>
       </div>
-      <label>Notes</label>
+
+      <label>Setup quality checklist</label>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">How well did this setup match your plan? Check what applied.</div>
+      <div id="probChecklist">
+        <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Clear market structure</span></div>
+        <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Liquidity / key level present</span></div>
+        <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Volume confirmation</span></div>
+        <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Higher timeframe aligned</span></div>
+        <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Risk properly defined</span></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 16px;">
+        <span style="font-size:13px;color:var(--text-secondary);">Setup probability</span>
+        <span id="probValue" style="font-family:var(--font-mono);font-weight:500;font-size:18px;color:var(--gold);">0%</span>
+      </div>
+      <div class="prob-meter-track"><div class="prob-meter-fill" id="probFill" style="width:0%;"></div></div>
+
+      <label style="margin-top:16px;">Notes</label>
       <textarea id="notesInput" rows="3" placeholder="What happened on this trade" style="width:100%;margin-bottom:16px;"></textarea>
       <button id="submitTrade" style="width:100%;">Log trade</button>
       <p id="submitMsg" class="muted" style="font-size:12px;margin-top:8px;"></p>
@@ -1519,6 +1566,20 @@ function renderLogForm(container) {
   }
   disciplinedBtn.onclick = () => setEmotional(false);
   emotionalBtn.onclick = () => setEmotional(true);
+
+  // Probability meter checklist
+  state.setupScore = 0;
+  const checks = container.querySelectorAll('[data-check]');
+  function updateProb() {
+    const checked = container.querySelectorAll('[data-check].checked').length;
+    const pct = Math.round((checked / checks.length) * 100);
+    state.setupScore = pct;
+    document.getElementById('probValue').textContent = pct + '%';
+    document.getElementById('probFill').style.width = pct + '%';
+  }
+  checks.forEach(c => {
+    c.onclick = () => { c.classList.toggle('checked'); updateProb(); };
+  });
 
   document.getElementById('imgInput').onchange = (e) => {
     const f = e.target.files[0];
@@ -1557,7 +1618,8 @@ function renderLogForm(container) {
       pnl_pct: parseFloat(document.getElementById('pnlInput').value || '0'),
       emotional: state.emotionalVal,
       notes: document.getElementById('notesInput').value || null,
-      screenshot_url: screenshotUrl
+      screenshot_url: screenshotUrl,
+      setup_score: state.setupScore != null ? state.setupScore : null
     };
 
     const { error: insertErr } = await sb.from('trades').insert(payload);
@@ -1651,6 +1713,11 @@ function openTradeDetail(t) {
           <div style="font-size:11px;color:var(--text-muted);">Instrument</div>
           <div style="font-weight:500;">${esc(t.instrument || '—')}</div>
         </div>
+        ${t.setup_score != null ? `
+        <div class="card" style="background:var(--surface-2);">
+          <div style="font-size:11px;color:var(--text-muted);">Setup Quality</div>
+          <div style="font-family:var(--font-mono);font-weight:500;color:${t.setup_score >= 60 ? 'var(--text-success)' : t.setup_score >= 40 ? '#fbbf24' : 'var(--text-danger)'};">${t.setup_score}%</div>
+        </div>` : ''}
       </div>
 
       ${t.notes ? `
