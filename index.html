@@ -749,6 +749,35 @@ function computeStats(trades, code) {
   };
 }
 
+const TIERS = [
+  { name: 'Rookie',     minTrades: 0,   minScore: 0,  icon: '🌱', color: '#9a9a9a' },
+  { name: 'Trader',     minTrades: 10,  minScore: 40, icon: '📈', color: '#60a5fa' },
+  { name: 'Strategist', minTrades: 25,  minScore: 55, icon: '🧠', color: '#a78bfa' },
+  { name: 'Veteran',    minTrades: 50,  minScore: 65, icon: '🛡️', color: '#34d399' },
+  { name: 'Elite',      minTrades: 100, minScore: 75, icon: '⚡', color: '#d4af37' },
+  { name: 'Legend',     minTrades: 150, minScore: 85, icon: '👑', color: '#f97316' }
+];
+
+function computeTier(trades, code) {
+  const t = trades.filter(tr => tr.trader_code === code);
+  const total = t.length;
+  const wins = t.filter(tr => tr.result === 'win').length;
+  const disciplined = t.filter(tr => !tr.emotional).length;
+  const winRate = total ? (wins / total) * 100 : 0;
+  const disciplineRate = total ? (disciplined / total) * 100 : 0;
+  const score = winRate * 0.5 + disciplineRate * 0.5;
+
+  let current = TIERS[0];
+  for (const tier of TIERS) {
+    if (total >= tier.minTrades && score >= tier.minScore) current = tier;
+  }
+
+  const currentIndex = TIERS.indexOf(current);
+  const next = TIERS[currentIndex + 1] || null;
+
+  return { ...current, score: Math.round(score), total, next };
+}
+
 function computeBadges(trades, code) {
   const t = trades.filter(tr => tr.trader_code === code)
     .sort((a, b) => (a.trade_date + a.trade_time).localeCompare(b.trade_date + b.trade_time));
@@ -870,6 +899,7 @@ async function renderDashboard() {
   const myTrades = allTrades.filter(t => t.trader_code === state.currentCode);
   const stats = computeStats(allTrades, state.currentCode);
   const streaks = computeStreaks(allTrades, state.currentCode);
+  const myTier = computeTier(allTrades, state.currentCode);
 
   // Fetch the latest mentor announcement, if any
   let announcementBanner = '';
@@ -925,11 +955,13 @@ async function renderDashboard() {
   let leaderboard = traderCodes.map(code => {
     const s = computeStats(allTrades, code);
     const sk = computeStreaks(allTrades, code);
+    const tier = computeTier(allTrades, code);
     return {
       code, nick: traderMap[code] || code,
       winRate: s.winRate, disciplineRate: s.disciplineRate, pnlPct: s.pnlPct, total: s.total,
       blend: Math.round(s.winRate * 0.5 + s.disciplineRate * 0.5),
-      streak: sk.current, streakType: sk.currentType, bestStreak: sk.best
+      streak: sk.current, streakType: sk.currentType, bestStreak: sk.best,
+      tier: tier
     };
   }).filter(r => r.total > 0);
 
@@ -948,6 +980,11 @@ async function renderDashboard() {
         <div>
           <div class="brand-mark">CR8 TRADING</div>
           <h2 style="margin-top:2px;">${esc(state.currentNick)} <span style="font-size:13px;color:var(--gold);font-weight:400;">🏅 ${computeBadges(allTrades, state.currentCode).filter(b=>b.unlocked).length}</span></h2>
+          <div style="margin-top:4px;display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;background:${myTier.color}1a;border:1px solid ${myTier.color};">
+            <span style="font-size:13px;">${myTier.icon}</span>
+            <span style="font-size:12px;font-weight:500;color:${myTier.color};">${myTier.name}</span>
+          </div>
+          ${myTier.next ? `<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Next: ${myTier.next.icon} ${myTier.next.name} &middot; needs ${myTier.next.minTrades} trades &amp; ${myTier.next.minScore}+ score</div>` : `<div style="font-size:11px;color:var(--gold);margin-top:3px;">Max tier reached 🏆</div>`}
         </div>
       </div>
       <button id="logoutBtn">Log out</button>
@@ -1482,7 +1519,7 @@ function renderLeaderboard(container, leaderboard) {
           </div>
           <div class="avatar sm">${getInitials(r.nick)}</div>
           <div style="flex:1;">
-            <div style="font-weight:500;">${esc(r.nick)}${isMe ? ' <span style="font-size:12px;color:var(--gold);">(you)</span>' : ''}${r.streak >= 3 && r.streakType === 'win' ? ' <span class="flame" style="font-size:14px;">🔥</span>' : ''}</div>
+            <div style="font-weight:500;"><span title="${r.tier.name}" style="margin-right:4px;">${r.tier.icon}</span>${esc(r.nick)}${isMe ? ' <span style="font-size:12px;color:var(--gold);">(you)</span>' : ''}${r.streak >= 3 && r.streakType === 'win' ? ' <span class="flame" style="font-size:14px;">🔥</span>' : ''}</div>
             <div style="font-size:12px;color:var(--text-secondary);">${r.total} trades${r.streak > 1 ? ` &nbsp;·&nbsp; ${r.streak} ${r.streakType === 'win' ? 'W' : 'L'} streak` : ''}</div>
           </div>
           <div style="text-align:right;font-size:12px;color:var(--text-muted);">
