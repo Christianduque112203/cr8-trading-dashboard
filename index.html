@@ -480,6 +480,46 @@
     margin-bottom: 16px;
   }
   .rank-connector.filled { background: var(--gold); }
+
+  /* Vertical side navigation (wide screens only) */
+  #side-nav {
+    position: fixed;
+    left: 24px; top: 50%; transform: translateY(-50%);
+    width: 168px;
+    z-index: 3;
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 86vh;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  #side-nav::-webkit-scrollbar { display: none; }
+  #side-nav .side-brand {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.15em;
+    color: var(--gold); padding: 0 12px 8px; opacity: 0.8;
+  }
+  .side-nav-btn {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    background: transparent;
+    border: 0.5px solid transparent;
+    color: var(--text-secondary);
+    font-size: 13px; font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease, transform 0.12s ease;
+  }
+  .side-nav-btn:hover { background: var(--surface-2); color: var(--text-primary); border-color: var(--border); transform: translateX(2px); }
+  .side-nav-btn.active { background: rgba(212,175,55,0.12); color: var(--gold); border-color: var(--gold); }
+  .side-nav-btn .ico { font-size: 15px; flex-shrink: 0; }
+
+  @media (min-width: 1160px) {
+    #side-nav { display: flex; }
+    .tab-bar-h { display: none !important; }
+  }
   @media (max-width: 600px) {
     #social-bar { flex-direction: row; left: 10px; bottom: 46px; gap: 6px; }
     #social-bar a { width: 34px; height: 34px; font-size: 15px; }
@@ -647,6 +687,7 @@
 </div>
 <div id="app"></div>
 <div id="market-sidebar"></div>
+<div id="side-nav"></div>
 <div id="social-bar">
   <a href="https://t.me/CR8TORCRYPTO" target="_blank" rel="noopener" title="CR8TOR on Telegram">✈️<span class="social-label">@CR8TORCRYPTO</span></a>
   <a href="https://t.me/nikitatrades" target="_blank" rel="noopener" title="Admin Nikita on Telegram">✈️<span class="social-label">@nikitatrades</span></a>
@@ -892,6 +933,8 @@ function renderLogin() {
   if (_marketInterval) { clearInterval(_marketInterval); _marketInterval = null; }
   const ms = document.getElementById('market-sidebar');
   if (ms) ms.innerHTML = '';
+  const sn = document.getElementById('side-nav');
+  if (sn) sn.innerHTML = '';
   app.innerHTML = `
     <div style="max-width:380px;margin:40px auto 0;" class="fade-in">
       <div style="text-align:center;margin-bottom:1.5rem;">
@@ -1648,7 +1691,7 @@ async function renderDashboard() {
     ${drawdownAlert}
     ${announcementBanner}
     ${streakBanner}
-    <div style="display:flex;gap:8px;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
+    <div class="tab-bar-h" style="display:flex;gap:8px;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
       <button class="tabbtn ${state.tab==='log'?'active':''}" data-tab="log">➕ Log Trade</button>
       <button class="tabbtn ${state.tab==='mine'?'active':''}" data-tab="mine">📜 Journal</button>
       <button class="tabbtn ${state.tab==='charts'?'active':''}" data-tab="charts">📈 Charts</button>
@@ -1695,6 +1738,34 @@ async function renderDashboard() {
       renderDashboard();
     };
   });
+
+  // Build & populate the vertical side navigation
+  const SIDE_TABS = [
+    { id: 'log', icon: '➕', label: 'Log Trade' },
+    { id: 'mine', icon: '📜', label: 'Journal' },
+    { id: 'charts', icon: '📈', label: 'Charts' },
+    { id: 'calc', icon: '🧮', label: 'Risk' },
+    { id: 'board', icon: '🏆', label: 'Leaderboard' },
+    { id: 'badges', icon: '🎖', label: 'Badges' },
+    { id: 'bests', icon: '⭐', label: 'Personal Best' },
+    { id: 'dna', icon: '🧬', label: 'Trader DNA' }
+  ];
+  const sideNav = document.getElementById('side-nav');
+  if (sideNav) {
+    sideNav.innerHTML = `<div class="side-brand">CR8 MENU</div>` + SIDE_TABS.map(t => `
+      <button class="side-nav-btn ${state.tab === t.id ? 'active' : ''}" data-tab="${t.id}">
+        <span class="ico">${t.icon}</span><span>${t.label}</span>
+      </button>`).join('');
+    sideNav.querySelectorAll('.side-nav-btn').forEach(b => {
+      b.onclick = () => {
+        const fromIndex = TAB_ORDER.indexOf(state.tab);
+        const toIndex = TAB_ORDER.indexOf(b.dataset.tab);
+        state.slideDir = toIndex >= fromIndex ? 'right' : 'left';
+        state.tab = b.dataset.tab;
+        renderDashboard();
+      };
+    });
+  }
 
   const content = document.getElementById('tabContent');
   if (state.tab === 'log') renderLogForm(content);
