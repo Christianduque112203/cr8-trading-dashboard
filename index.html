@@ -1134,6 +1134,7 @@ async function renderDashboard() {
       <button class="tabbtn ${state.tab==='calc'?'active':''}" data-tab="calc">Risk Calc</button>
       <button class="tabbtn ${state.tab==='board'?'active':''}" data-tab="board">Leaderboard</button>
       <button class="tabbtn ${state.tab==='badges'?'active':''}" data-tab="badges">Badges</button>
+      <button class="tabbtn ${state.tab==='bests'?'active':''}" data-tab="bests">Personal Bests</button>
     </div>
     <div id="tabContent"></div>
   `;
@@ -1163,6 +1164,7 @@ async function renderDashboard() {
   else if (state.tab === 'charts') renderCharts(content, myTrades);
   else if (state.tab === 'calc') renderRiskCalc(content);
   else if (state.tab === 'badges') renderBadges(content, allTrades);
+  else if (state.tab === 'bests') renderPersonalBests(content, myTrades);
   else renderLeaderboard(content, leaderboard);
 }
 
@@ -1607,6 +1609,96 @@ function renderCharts(container, trades) {
       }
     }
   });
+}
+
+function renderPersonalBests(container, trades) {
+  if (trades.length === 0) {
+    container.innerHTML = `<div class="fade-in"><p class="muted">No trades logged yet — your personal bests will show up here once you start.</p></div>`;
+    return;
+  }
+
+  const sorted = [...trades].sort((a, b) => (a.trade_date + a.trade_time).localeCompare(b.trade_date + b.trade_time));
+
+  // Biggest win and biggest loss
+  const biggestWin = trades.reduce((best, t) => Number(t.pnl_pct) > (best ? Number(best.pnl_pct) : -Infinity) ? t : best, null);
+  const biggestLoss = trades.reduce((worst, t) => Number(t.pnl_pct) < (worst ? Number(worst.pnl_pct) : Infinity) ? t : worst, null);
+
+  // Longest win streak (reuse computeStreaks logic's "best", already win-streak based)
+  const streaks = computeStreaks(trades.map(t => ({ ...t, trader_code: t.trader_code })), trades[0] ? trades[0].trader_code : null);
+
+  // Best week — group by ISO week, sum pnl
+  function getWeekKey(dateStr) {
+    const d = new Date(dateStr);
+    const onejan = new Date(d.getFullYear(), 0, 1);
+    const week = Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7);
+    return `${d.getFullYear()}-W${week}`;
+  }
+  const weekTotals = {};
+  sorted.forEach(t => {
+    const wk = getWeekKey(t.trade_date);
+    weekTotals[wk] = (weekTotals[wk] || 0) + Number(t.pnl_pct);
+  });
+  let bestWeekKey = null, bestWeekValue = -Infinity;
+  Object.entries(weekTotals).forEach(([wk, val]) => { if (val > bestWeekValue) { bestWeekValue = val; bestWeekKey = wk; } });
+
+  // Most disciplined day streak (consecutive trades, not just one day) — longest run of non-emotional trades
+  let bestDisciplineRun = 0, run = 0;
+  sorted.forEach(t => {
+    if (!t.emotional) { run++; bestDisciplineRun = Math.max(bestDisciplineRun, run); } else run = 0;
+  });
+
+  // Total trades and overall win rate for context
+  const total = trades.length;
+  const wins = trades.filter(t => t.result === 'win').length;
+
+  const cards = [
+    {
+      icon: '💰', label: 'Biggest Win', color: 'var(--text-success)',
+      value: biggestWin ? `+${Number(biggestWin.pnl_pct)}%` : '—',
+      sub: biggestWin ? `${esc(biggestWin.instrument || 'Trade')} &middot; ${biggestWin.trade_date}` : 'No wins yet'
+    },
+    {
+      icon: '📉', label: 'Biggest Loss', color: 'var(--text-danger)',
+      value: biggestLoss ? `${Number(biggestLoss.pnl_pct)}%` : '—',
+      sub: biggestLoss ? `${esc(biggestLoss.instrument || 'Trade')} &middot; ${biggestLoss.trade_date}` : 'No losses yet'
+    },
+    {
+      icon: '🔥', label: 'Longest Win Streak', color: 'var(--gold)',
+      value: `${streaks.best} trades`,
+      sub: streaks.best > 0 ? 'Personal record' : 'Log a few wins in a row to set this'
+    },
+    {
+      icon: '📅', label: 'Best Week', color: 'var(--text-success)',
+      value: bestWeekKey ? `${bestWeekValue >= 0 ? '+' : ''}${Math.round(bestWeekValue * 10) / 10}%` : '—',
+      sub: bestWeekKey ? bestWeekKey.replace('-W', ', Week ') : 'No data yet'
+    },
+    {
+      icon: '🧘', label: 'Discipline Run', color: '#60a5fa',
+      value: `${bestDisciplineRun} trades`,
+      sub: 'Longest streak of following your rules'
+    },
+    {
+      icon: '📊', label: 'Total Trades', color: 'var(--text-primary)',
+      value: `${total}`,
+      sub: `${total ? Math.round((wins/total)*100) : 0}% overall win rate`
+    }
+  ];
+
+  container.innerHTML = `
+    <div class="fade-in">
+      <p class="muted" style="font-size:13px;margin-bottom:16px;">Your personal records, tracked since your very first trade.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
+        ${cards.map(c => `
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+              <div style="font-size:12px;color:var(--text-secondary);">${c.label}</div>
+              <div style="font-size:18px;">${c.icon}</div>
+            </div>
+            <div style="font-family:var(--font-mono);font-weight:500;font-size:22px;color:${c.color};margin-top:6px;">${c.value}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${c.sub}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
 }
 
 function renderBadges(container, allTrades) {
