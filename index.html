@@ -515,6 +515,7 @@ function renderAdminPanel() {
       <div style="display:flex;gap:8px;margin-bottom:1.5rem;border-bottom:0.5px solid var(--border);">
         <button class="tabbtn active" id="adminTab-overview" data-atab="overview">Student Overview</button>
         <button class="tabbtn" id="adminTab-issue" data-atab="issue">Issue Code</button>
+        <button class="tabbtn" id="adminTab-announce" data-atab="announce">Announcements</button>
       </div>
 
       <div id="adminContent"><p class="muted">Loading students…</p></div>
@@ -538,6 +539,42 @@ function renderAdminPanel() {
 async function renderAdminContent(tab) {
   const content = document.getElementById('adminContent');
   if (!content) return;
+
+  if (tab === 'announce') {
+    content.innerHTML = `<p class="muted" style="font-size:13px;">Loading…</p>`;
+    const { data: announcements } = await sb.from('announcements').select('*').order('created_at', { ascending: false });
+
+    content.innerHTML = `
+      <div class="fade-in" style="max-width:520px;">
+        <label>New announcement</label>
+        <textarea id="announceText" rows="3" placeholder="e.g. Great discipline this week, team! Remember: no revenge trades on Fridays." style="width:100%;margin-bottom:12px;"></textarea>
+        <button id="postAnnounceBtn" style="width:100%;">Post announcement</button>
+        <p id="announceMsg" class="muted" style="font-size:13px;margin-top:12px;"></p>
+
+        <div style="margin-top:24px;">
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Recent announcements</div>
+          ${(announcements && announcements.length)
+            ? announcements.map(a => `
+                <div class="card" style="margin-bottom:8px;">
+                  <div style="font-size:14px;">${esc(a.message)}</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${new Date(a.created_at).toLocaleString()}</div>
+                </div>`).join('')
+            : `<p class="muted" style="font-size:13px;">No announcements posted yet.</p>`}
+        </div>
+      </div>`;
+
+    document.getElementById('postAnnounceBtn').onclick = async () => {
+      const text = document.getElementById('announceText').value.trim();
+      const msg = document.getElementById('announceMsg');
+      if (!text) { msg.textContent = 'Write a message first.'; return; }
+      msg.textContent = 'Posting…';
+      const { error } = await sb.rpc('post_announcement', { p_message: text, p_admin_password: state.adminPass });
+      if (error) { msg.textContent = 'Could not post. Try unlocking the admin panel again.'; return; }
+      msg.textContent = 'Posted! Students will see this next time they log in.';
+      renderAdminContent('announce');
+    };
+    return;
+  }
 
   if (tab === 'issue') {
     content.innerHTML = `
@@ -834,6 +871,29 @@ async function renderDashboard() {
   const stats = computeStats(allTrades, state.currentCode);
   const streaks = computeStreaks(allTrades, state.currentCode);
 
+  // Fetch the latest mentor announcement, if any
+  let announcementBanner = '';
+  let latestAnnouncementId = null;
+  try {
+    const { data: announcements } = await sb.from('announcements').select('*').order('created_at', { ascending: false });
+    const latest = announcements && announcements.length ? announcements[0] : null;
+    if (latest) {
+      latestAnnouncementId = latest.id;
+      const dismissedId = sessionStorage.getItem('cr8_dismissed_announcement');
+      if (dismissedId !== latest.id) {
+        announcementBanner = `
+          <div class="card fade-in" style="border-color:var(--gold);margin-bottom:1.25rem;display:flex;gap:10px;align-items:flex-start;">
+            <div style="font-size:18px;">📣</div>
+            <div style="flex:1;">
+              <div style="font-size:12px;color:var(--gold);font-weight:500;margin-bottom:2px;">MENTOR ANNOUNCEMENT</div>
+              <div style="font-size:14px;color:var(--text-primary);">${esc(latest.message)}</div>
+            </div>
+            <button id="dismissAnnouncement" style="font-size:12px;padding:4px 8px;flex-shrink:0;">Dismiss</button>
+          </div>`;
+      }
+    }
+  } catch (e) { /* announcements table may not exist yet, fail silently */ }
+
   // Build streak banner HTML
   let streakBanner = '';
   if (streaks.current > 0) {
@@ -898,6 +958,7 @@ async function renderDashboard() {
       ${metricCard('Discipline', stats.disciplineRate + '%')}
       ${metricCard('Net gain', (stats.pnlPct >= 0 ? '+' : '') + stats.pnlPct + '%', stats.pnlPct >= 0 ? 'green' : 'red', true)}
     </div>
+    ${announcementBanner}
     ${streakBanner}
     <div style="display:flex;gap:8px;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);">
       <button class="tabbtn ${state.tab==='log'?'active':''}" data-tab="log">Log a trade</button>
@@ -916,6 +977,13 @@ async function renderDashboard() {
     state.currentCode = null;
     renderLogin();
   };
+  const dismissBtn = document.getElementById('dismissAnnouncement');
+  if (dismissBtn && latestAnnouncementId) {
+    dismissBtn.onclick = () => {
+      sessionStorage.setItem('cr8_dismissed_announcement', latestAnnouncementId);
+      renderDashboard();
+    };
+  }
   app.querySelectorAll('.tabbtn').forEach(b => {
     b.onclick = () => { state.tab = b.dataset.tab; renderDashboard(); };
   });
