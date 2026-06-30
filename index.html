@@ -446,6 +446,40 @@
   }
   #social-bar a { position: relative; }
   #social-bar a:hover .social-label { opacity: 1; }
+
+  .rank-track {
+    display: flex; align-items: center; gap: 0;
+    margin: 4px 0;
+  }
+  .rank-node {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .rank-node .rank-ico {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    background: var(--surface-2);
+    border: 1.5px solid var(--border-strong);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    filter: grayscale(0.8); opacity: 0.5;
+  }
+  .rank-node.reached .rank-ico { filter: none; opacity: 1; }
+  .rank-node.current .rank-ico {
+    transform: scale(1.18);
+    box-shadow: 0 0 14px rgba(212,175,55,0.5);
+  }
+  .rank-node .rank-name {
+    font-size: 9px; color: var(--text-muted); white-space: nowrap;
+    text-align: center; max-width: 56px; line-height: 1.1;
+  }
+  .rank-node.current .rank-name { color: var(--gold); font-weight: 500; }
+  .rank-connector {
+    flex: 1; height: 2px; background: var(--border-strong); min-width: 8px;
+    margin-bottom: 16px;
+  }
+  .rank-connector.filled { background: var(--gold); }
   @media (max-width: 600px) {
     #social-bar { flex-direction: row; left: 10px; bottom: 46px; gap: 6px; }
     #social-bar a { width: 34px; height: 34px; font-size: 15px; }
@@ -1270,7 +1304,7 @@ function computeTier(trades, code) {
   const currentIndex = TIERS.indexOf(current);
   const next = TIERS[currentIndex + 1] || null;
 
-  return { ...current, score: Math.round(score), total, next };
+  return { ...current, score: Math.round(score), total, next, currentIndex };
 }
 
 function computeBadges(trades, code) {
@@ -1584,6 +1618,32 @@ async function renderDashboard() {
       ${metricCard('Win rate', stats.winRate + '%')}
       ${metricCard('Discipline', stats.disciplineRate + '%')}
       ${metricCard('Net gain', (stats.pnlPct >= 0 ? '+' : '') + stats.pnlPct + '%', stats.pnlPct >= 0 ? 'green' : 'red', true)}
+    </div>
+    <div class="card fade-in" style="margin-bottom:1.25rem;overflow-x:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-weight:500;font-size:14px;">Institutional Rank</div>
+        ${myTier.next
+          ? `<div style="font-size:11px;color:var(--text-muted);">${myTier.total}/${myTier.next.minTrades} trades &middot; ${myTier.score}/${myTier.next.minScore} score to ${esc(myTier.next.name)}</div>`
+          : `<div style="font-size:11px;color:var(--gold);">Top rank achieved 👑</div>`}
+      </div>
+      <div class="rank-track" style="min-width:560px;">
+        ${TIERS.map((tier, i) => {
+          const reached = i <= myTier.currentIndex;
+          const isCurrent = i === myTier.currentIndex;
+          const connector = i < TIERS.length - 1
+            ? `<div class="rank-connector ${i < myTier.currentIndex ? 'filled' : ''}"></div>` : '';
+          return `
+            <div class="rank-node ${reached ? 'reached' : ''} ${isCurrent ? 'current' : ''}">
+              <div class="rank-ico">${tier.icon}</div>
+              <div class="rank-name">${esc(tier.name)}</div>
+            </div>${connector}`;
+        }).join('')}
+      </div>
+      ${myTier.next ? `
+        <div style="margin-top:10px;">
+          <div class="prob-meter-track"><div class="prob-meter-fill" style="width:${Math.min(100, Math.round((myTier.total / myTier.next.minTrades) * 100))}%;background:linear-gradient(90deg,#8a6d1f,var(--gold));"></div></div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;text-align:center;">Keep logging quality trades to reach ${myTier.next.icon} ${esc(myTier.next.name)}</div>
+        </div>` : ''}
     </div>
     ${drawdownAlert}
     ${announcementBanner}
