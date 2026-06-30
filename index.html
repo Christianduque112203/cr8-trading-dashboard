@@ -1244,12 +1244,13 @@ function computeStats(trades, code) {
 }
 
 const TIERS = [
-  { name: 'Rookie',     minTrades: 0,   minScore: 0,  icon: '🌱', color: '#9a9a9a' },
-  { name: 'Trader',     minTrades: 10,  minScore: 40, icon: '📈', color: '#60a5fa' },
-  { name: 'Strategist', minTrades: 25,  minScore: 55, icon: '🧠', color: '#a78bfa' },
-  { name: 'Veteran',    minTrades: 50,  minScore: 65, icon: '🛡️', color: '#34d399' },
-  { name: 'Elite',      minTrades: 100, minScore: 75, icon: '⚡', color: '#d4af37' },
-  { name: 'Legend',     minTrades: 150, minScore: 85, icon: '👑', color: '#f97316' }
+  { name: 'Retail',            minTrades: 0,   minScore: 0,  icon: '🪙', color: '#9a9a9a' },
+  { name: 'Developing',        minTrades: 10,  minScore: 40, icon: '📈', color: '#60a5fa' },
+  { name: 'Professional',      minTrades: 25,  minScore: 55, icon: '💼', color: '#a78bfa' },
+  { name: 'Institution',       minTrades: 50,  minScore: 65, icon: '🏛️', color: '#34d399' },
+  { name: 'Portfolio Manager', minTrades: 90,  minScore: 73, icon: '📊', color: '#22d3ee' },
+  { name: 'Fund Manager',      minTrades: 140, minScore: 80, icon: '⚡', color: '#d4af37' },
+  { name: 'Legacy',            minTrades: 200, minScore: 88, icon: '👑', color: '#f97316' }
 ];
 
 function computeTier(trades, code) {
