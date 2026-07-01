@@ -278,6 +278,54 @@
     font-family: var(--font-mono); font-size: 9px; color: var(--gold);
     letter-spacing: 0.12em; margin-bottom: 8px; opacity: 0.85;
   }
+
+  .terminal-input-wrap {
+    position: relative;
+    margin-bottom: 16px;
+  }
+  .terminal-input-wrap .prompt-char {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    font-family: var(--font-mono); color: var(--gold); font-size: 14px;
+    pointer-events: none;
+  }
+  #loginCode.terminal-style {
+    padding-left: 26px;
+    font-family: var(--font-mono);
+    letter-spacing: 0.05em;
+  }
+  #loginCode.terminal-style::placeholder { color: var(--text-muted); }
+  @keyframes shakeError {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+  .shake-error { animation: shakeError 0.4s ease; border-color: var(--text-danger) !important; }
+
+  .terminal-boot-line {
+    font-family: var(--font-mono); font-size: 11px; color: #4ade80;
+    min-height: 16px;
+  }
+  .terminal-boot-line .cursor { animation: blinkCursor 0.8s step-end infinite; }
+
+  .system-status-strip {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    text-align: center; margin-top: 18px;
+    display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;
+  }
+  .system-status-strip .ok { color: #4ade80; }
+  .system-status-strip .sep { color: var(--border-strong); }
+
+  .login-market-status {
+    display: flex; justify-content: center; gap: 16px;
+    margin-top: 14px; flex-wrap: wrap;
+  }
+  .login-market-status .lms-item {
+    font-family: var(--font-mono); font-size: 10px;
+    display: flex; align-items: center; gap: 5px;
+    color: var(--text-secondary);
+  }
   .crypto-particle {
     position: absolute;
     font-family: var(--font-mono);
@@ -1146,6 +1194,17 @@ async function loadLoginStats() {
   } catch (e) { el.innerHTML = ''; }
 }
 
+function loadLoginMarketStatus() {
+  const el = document.getElementById('loginMarketStatus');
+  if (!el) return;
+  const statuses = getMarketStatus();
+  el.innerHTML = statuses.map(m => `
+    <span class="lms-item">
+      <span class="session-dot ${m.open ? 'open' : 'closed'}"></span>
+      ${esc(m.name)} ${m.open ? 'OPEN' : 'CLOSED'}
+    </span>`).join('');
+}
+
 async function loadLoginWidgets() {
   const el = document.getElementById('loginWidgets');
   if (!el) return;
@@ -1219,41 +1278,75 @@ function renderLogin() {
         <div class="tagline">CREATE &middot; REFINE &middot; ELEVATE</div>
       </div>
       <label>Trader code</label>
-      <input id="loginCode" placeholder="Enter your code" style="width:100%;margin-bottom:16px;font-family:var(--font-mono);" />
+      <div class="terminal-input-wrap">
+        <span class="prompt-char">&gt;</span>
+        <input id="loginCode" class="terminal-style" placeholder="Enter your code" style="width:100%;font-family:var(--font-mono);" />
+      </div>
       <button id="loginBtn" style="width:100%;">Enter dashboard</button>
-      <p id="loginMsg" class="muted" style="font-size:12px;margin-top:12px;"></p>
+      <p id="loginMsg" class="terminal-boot-line" style="margin-top:12px;"></p>
 
       <div class="login-stats" id="loginStats"></div>
 
       <div class="login-widgets" id="loginWidgets"></div>
+
+      <div class="login-market-status" id="loginMarketStatus"></div>
+
+      <div class="system-status-strip">
+        <span class="ok">● SYSTEM ONLINE</span>
+        <span class="sep">|</span>
+        <span>UPTIME 99.9%</span>
+        <span class="sep">|</span>
+        <span class="ok">SECURE CONNECTION</span>
+      </div>
 
       <p style="text-align:center;margin-top:24px;"><a href="#" id="adminLink" style="font-size:12px;color:var(--text-muted);text-decoration:none;">Mentor admin</a></p>
     </div>`;
 
   loadLoginStats();
   loadLoginWidgets();
+  loadLoginMarketStatus();
 
   document.getElementById('adminLink').onclick = (e) => { e.preventDefault(); renderAdmin(); };
 
-  document.getElementById('loginBtn').onclick = async () => {
-    const code = document.getElementById('loginCode').value.trim().toUpperCase();
-    const msg = document.getElementById('loginMsg');
-    if (!code) { msg.textContent = 'Enter your trader code.'; return; }
-    msg.textContent = 'Checking…';
+  const loginCodeInput = document.getElementById('loginCode');
+  const loginMsgEl = document.getElementById('loginMsg');
+
+  // Live-uppercase as the trader types
+  loginCodeInput.addEventListener('input', () => {
+    const start = loginCodeInput.selectionStart, end = loginCodeInput.selectionEnd;
+    loginCodeInput.value = loginCodeInput.value.toUpperCase();
+    loginCodeInput.setSelectionRange(start, end);
+  });
+
+  function shakeInput() {
+    loginCodeInput.classList.remove('shake-error');
+    void loginCodeInput.offsetWidth;
+    loginCodeInput.classList.add('shake-error');
+  }
+
+  async function attemptLogin() {
+    const code = loginCodeInput.value.trim().toUpperCase();
+    if (!code) { loginMsgEl.textContent = '> Enter your trader code.'; shakeInput(); return; }
+    loginMsgEl.innerHTML = '> Verifying credentials<span class="cursor">_</span>';
 
     const { data: existing, error: fetchErr } = await sb.from('traders').select('*').eq('code', code).maybeSingle();
-    if (fetchErr) { msg.textContent = 'Something went wrong. Try again.'; return; }
+    if (fetchErr) { loginMsgEl.textContent = '> Connection error. Try again.'; shakeInput(); return; }
 
     if (!existing) {
-      msg.textContent = 'Code not recognized. Ask your mentor for a valid trader code.';
+      loginMsgEl.textContent = '> ACCESS DENIED — code not recognized. Ask your mentor for a valid trader code.';
+      shakeInput();
       return;
     }
+    loginMsgEl.innerHTML = '> Access granted. Loading dashboard<span class="cursor">_</span>';
     state.currentCode = code;
     state.currentNick = existing.nickname;
     sessionStorage.setItem('cr8_code', state.currentCode);
     sessionStorage.setItem('cr8_nick', state.currentNick);
     await renderDashboard();
-  };
+  }
+
+  document.getElementById('loginBtn').onclick = attemptLogin;
+  loginCodeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptLogin(); });
 }
 
 function renderAdmin() {
