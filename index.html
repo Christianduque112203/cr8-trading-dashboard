@@ -448,6 +448,41 @@
   #social-bar a { position: relative; }
   #social-bar a:hover .social-label { opacity: 1; }
 
+  .price-wall {
+    position: fixed;
+    top: 0; bottom: 0;
+    width: 90px;
+    z-index: 1;
+    overflow: hidden;
+    display: none;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+  }
+  .price-wall.left { left: 0; }
+  .price-wall.right { right: 0; }
+  .price-wall-track {
+    display: flex; flex-direction: column; gap: 0;
+    animation: priceWallScroll 45s linear infinite;
+  }
+  .price-wall.right .price-wall-track { animation-direction: reverse; }
+  @keyframes priceWallScroll {
+    from { transform: translateY(0); }
+    to   { transform: translateY(-50%); }
+  }
+  .price-wall-item {
+    padding: 14px 8px;
+    text-align: center;
+    border-bottom: 0.5px solid rgba(212,175,55,0.08);
+    opacity: 0.55;
+  }
+  .price-wall-item .sym { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.05em; }
+  .price-wall-item .px { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .price-wall-item .chg { font-family: var(--font-mono); font-size: 10px; margin-top: 2px; }
+
+  @media (min-width: 1600px) {
+    .price-wall { display: block; }
+  }
+
   .rank-track {
     display: flex; align-items: center; gap: 0;
     margin: 4px 0;
@@ -751,6 +786,8 @@
 <div id="app"></div>
 <div id="market-sidebar"></div>
 <div id="side-nav"></div>
+<div class="price-wall left" id="priceWallLeft"></div>
+<div class="price-wall right" id="priceWallRight"></div>
 <div id="social-bar">
   <a href="https://t.me/CR8TORCRYPTO" target="_blank" rel="noopener" title="CR8TOR on Telegram">✈️<span class="social-label">@CR8TORCRYPTO</span></a>
   <a href="https://t.me/nikitatrades" target="_blank" rel="noopener" title="Admin Nikita on Telegram">✈️<span class="social-label">@nikitatrades</span></a>
@@ -997,6 +1034,8 @@ function renderLogin() {
   stopCryptoTicker();
   if (_fearGreedInterval) { clearInterval(_fearGreedInterval); _fearGreedInterval = null; }
   stopQuoteWidget();
+  const pwL = document.getElementById('priceWallLeft'); if (pwL) pwL.innerHTML = '';
+  const pwR = document.getElementById('priceWallRight'); if (pwR) pwR.innerHTML = '';
   const ms = document.getElementById('market-sidebar');
   if (ms) ms.innerHTML = '';
   const sn = document.getElementById('side-nav');
@@ -3802,8 +3841,8 @@ function getSessionStatus() {
 // Live crypto price ticker (CoinGecko public API — no key required, CORS-friendly)
 let _cryptoPrices = null;
 let _cryptoInterval = null;
-const CRYPTO_IDS = ['bitcoin', 'ethereum', 'solana', 'binancecoin', 'ripple'];
-const CRYPTO_SYMBOLS = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', binancecoin: 'BNB', ripple: 'XRP' };
+const CRYPTO_IDS = ['bitcoin', 'ethereum', 'solana', 'binancecoin', 'ripple', 'cardano', 'dogecoin', 'polkadot', 'chainlink', 'avalanche-2'];
+const CRYPTO_SYMBOLS = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', binancecoin: 'BNB', ripple: 'XRP', cardano: 'ADA', dogecoin: 'DOGE', polkadot: 'DOT', chainlink: 'LINK', 'avalanche-2': 'AVAX' };
 
 // Crypto Fear & Greed Index (alternative.me public API — no key required)
 let _fearGreed = null;
@@ -3935,7 +3974,31 @@ async function fetchCryptoPrices() {
       change: data[id] ? data[id].usd_24h_change : null
     })).filter(c => c.price != null);
     renderMarketSidebar();
+    renderPriceWalls();
   } catch (e) { /* offline or rate-limited — keep showing last known prices */ }
+}
+
+function renderPriceWalls() {
+  const left = document.getElementById('priceWallLeft');
+  const right = document.getElementById('priceWallRight');
+  if (!left || !right || !_cryptoPrices || !_cryptoPrices.length) return;
+  if (!state.currentCode) { left.innerHTML = ''; right.innerHTML = ''; return; }
+
+  // Duplicate the list so the scroll loop feels continuous (matches -50% translateY in CSS)
+  const doubled = [..._cryptoPrices, ..._cryptoPrices];
+  const itemsHtml = doubled.map(c => {
+    const up = c.change != null && c.change >= 0;
+    const changeStr = c.change != null ? `${up ? '+' : ''}${c.change.toFixed(1)}%` : '—';
+    return `
+      <div class="price-wall-item">
+        <div class="sym">${c.symbol}</div>
+        <div class="px">$${formatPrice(c.price)}</div>
+        <div class="chg" style="color:${up ? 'var(--text-success)' : 'var(--text-danger)'};">${up ? '▲' : '▼'} ${changeStr}</div>
+      </div>`;
+  }).join('');
+
+  left.innerHTML = `<div class="price-wall-track">${itemsHtml}</div>`;
+  right.innerHTML = `<div class="price-wall-track">${itemsHtml}</div>`;
 }
 
 function formatPrice(p) {
@@ -3968,6 +4031,7 @@ function cryptoTickerHTML() {
 
 function startCryptoTicker() {
   if (!_cryptoPrices) fetchCryptoPrices();
+  else renderPriceWalls();
   if (_cryptoInterval) clearInterval(_cryptoInterval);
   _cryptoInterval = setInterval(fetchCryptoPrices, 30000);
 }
