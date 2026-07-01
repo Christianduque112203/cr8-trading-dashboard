@@ -2387,6 +2387,29 @@ async function renderProfile(container) {
 
   const { data: trader } = await sb.from('traders').select('*').eq('code', state.currentCode).maybeSingle();
   const currentCapital = trader && trader.starting_capital != null ? trader.starting_capital : 0;
+  const allTrades = await fetchAllTrades();
+  const myTrades = allTrades.filter(t => t.trader_code === state.currentCode);
+
+  // Account stats: join date, days active (distinct trading days), longest break between trades
+  let joinDateStr = '—';
+  let daysSinceJoin = null;
+  if (trader && trader.created_at) {
+    const joinDate = new Date(trader.created_at);
+    joinDateStr = joinDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    daysSinceJoin = Math.max(0, Math.floor((Date.now() - joinDate.getTime()) / 86400000));
+  }
+  const distinctDays = new Set(myTrades.map(t => t.trade_date)).size;
+  const sortedDates = [...new Set(myTrades.map(t => t.trade_date))].sort();
+  let longestBreak = 0;
+  for (let i = 1; i < sortedDates.length; i++) {
+    const gap = Math.round((new Date(sortedDates[i]) - new Date(sortedDates[i - 1])) / 86400000);
+    if (gap > longestBreak) longestBreak = gap;
+  }
+  // Also count the gap from the last trade to today, in case they're currently on a break
+  if (sortedDates.length) {
+    const gapToToday = Math.round((Date.now() - new Date(sortedDates[sortedDates.length - 1]).getTime()) / 86400000);
+    if (gapToToday > longestBreak) longestBreak = gapToToday;
+  }
 
   container.innerHTML = `
     <div class="fade-in" style="max-width:480px;">
@@ -2395,6 +2418,30 @@ async function renderProfile(container) {
         <div>
           <div style="font-weight:500;font-size:16px;">${esc(state.currentNick)}</div>
           <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);">${esc(state.currentCode)}</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">Account summary</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);">Joined</div>
+            <div style="font-weight:500;font-size:14px;">${joinDateStr}</div>
+            ${daysSinceJoin != null ? `<div style="font-size:11px;color:var(--text-muted);margin-top:1px;">${daysSinceJoin} day${daysSinceJoin !== 1 ? 's' : ''} ago</div>` : ''}
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);">Days active</div>
+            <div style="font-weight:500;font-size:14px;font-family:var(--font-mono);color:var(--gold);">${distinctDays}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:1px;">distinct trading days</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);">Longest break</div>
+            <div style="font-weight:500;font-size:14px;font-family:var(--font-mono);color:${longestBreak >= 7 ? '#fbbf24' : 'var(--text-primary)'};">${longestBreak} day${longestBreak !== 1 ? 's' : ''}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);">Total trades</div>
+            <div style="font-weight:500;font-size:14px;">${myTrades.length}</div>
+          </div>
         </div>
       </div>
 
@@ -2430,7 +2477,6 @@ async function renderProfile(container) {
 
   // Show dollar-equivalent gain if capital is set
   if (currentCapital > 0) {
-    const allTrades = await fetchAllTrades();
     const stats = computeStats(allTrades, state.currentCode);
     const dollarGain = Math.round((stats.pnlPct / 100) * currentCapital * 100) / 100;
     const el = document.getElementById('dollarGainDisplay');
