@@ -2259,6 +2259,7 @@ async function renderDashboard() {
     ${announcementBanner}
     ${streakBanner}
     <div class="tab-bar-h" style="display:flex;gap:8px;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
+      <button class="tabbtn ${state.tab==='profile'?'active':''}" data-tab="profile">👤 Profile</button>
       <button class="tabbtn ${state.tab==='log'?'active':''}" data-tab="log">➕ Log Trade</button>
       <button class="tabbtn ${state.tab==='watch'?'active':''}" data-tab="watch">👁 Watchlist</button>
       <button class="tabbtn ${state.tab==='mine'?'active':''}" data-tab="mine">📜 Journal</button>
@@ -2305,7 +2306,7 @@ async function renderDashboard() {
       renderDashboard();
     };
   });
-  const TAB_ORDER = ['log', 'watch', 'mine', 'charts', 'calc', 'board', 'badges', 'bests', 'dna'];
+  const TAB_ORDER = ['profile', 'log', 'watch', 'mine', 'charts', 'calc', 'board', 'badges', 'bests', 'dna'];
   app.querySelectorAll('.tabbtn').forEach(b => {
     b.onclick = () => {
       const fromIndex = TAB_ORDER.indexOf(state.tab);
@@ -2318,6 +2319,7 @@ async function renderDashboard() {
 
   // Build & populate the vertical side navigation
   const SIDE_TABS = [
+    { id: 'profile', icon: '👤', label: 'Profile' },
     { id: 'log', icon: '➕', label: 'Log Trade' },
     { id: 'watch', icon: '👁', label: 'Watchlist' },
     { id: 'mine', icon: '📜', label: 'Journal' },
@@ -2346,7 +2348,8 @@ async function renderDashboard() {
   }
 
   const content = document.getElementById('tabContent');
-  if (state.tab === 'log') renderLogForm(content);
+  if (state.tab === 'profile') renderProfile(content);
+  else if (state.tab === 'log') renderLogForm(content);
   else if (state.tab === 'watch') renderWatchlist(content);
   else if (state.tab === 'mine') renderMine(content, myTrades);
   else if (state.tab === 'charts') renderCharts(content, myTrades);
@@ -2377,6 +2380,65 @@ function metricCard(label, value, color, standout) {
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">${label}</div>
     <div class="value-pop" style="font-size:24px;font-weight:500;font-family:var(--font-mono);${style}">${value}</div>
   </div>`;
+}
+
+async function renderProfile(container) {
+  container.innerHTML = `<div class="fade-in"><p class="muted">Loading your profile…</p></div>`;
+
+  const { data: trader } = await sb.from('traders').select('*').eq('code', state.currentCode).maybeSingle();
+  const currentCapital = trader && trader.starting_capital != null ? trader.starting_capital : 0;
+
+  container.innerHTML = `
+    <div class="fade-in" style="max-width:480px;">
+      <div class="card" style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+        <div class="avatar">${getInitials(state.currentNick)}</div>
+        <div>
+          <div style="font-weight:500;font-size:16px;">${esc(state.currentNick)}</div>
+          <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);">${esc(state.currentCode)}</div>
+        </div>
+      </div>
+
+      <label>Trading capital</label>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">
+        Enter the real account size you're trading with. This makes your % gains reflect real dollar terms,
+        and contributes to CR8's combined live capital total. Update it any time your balance changes.
+      </div>
+      <div style="position:relative;margin-bottom:12px;">
+        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-family:var(--font-mono);color:var(--gold);">$</span>
+        <input type="number" id="capitalInput" min="0" step="1" value="${currentCapital}" placeholder="1000" style="width:100%;padding-left:26px;font-family:var(--font-mono);" />
+      </div>
+      <button id="saveCapitalBtn" style="width:100%;">Save capital</button>
+      <p id="capitalMsg" class="muted" style="font-size:12px;margin-top:8px;"></p>
+
+      ${currentCapital > 0 ? `
+        <div class="card" style="margin-top:16px;background:var(--surface-2);">
+          <div style="font-size:12px;color:var(--text-secondary);">Current dollar-equivalent net gain</div>
+          <div id="dollarGainDisplay" style="font-family:var(--font-mono);font-weight:500;font-size:22px;color:var(--gold);margin-top:4px;">Calculating…</div>
+        </div>` : ''}
+    </div>`;
+
+  document.getElementById('saveCapitalBtn').onclick = async () => {
+    const val = parseFloat(document.getElementById('capitalInput').value);
+    const msg = document.getElementById('capitalMsg');
+    if (isNaN(val) || val < 0) { msg.textContent = 'Enter a valid, non-negative amount.'; return; }
+    msg.textContent = 'Saving…';
+    const { error } = await sb.rpc('set_trader_capital', { p_trader_code: state.currentCode, p_capital: val });
+    if (error) { msg.textContent = 'Could not save. Try again.'; return; }
+    msg.textContent = 'Saved!';
+    renderProfile(container);
+  };
+
+  // Show dollar-equivalent gain if capital is set
+  if (currentCapital > 0) {
+    const allTrades = await fetchAllTrades();
+    const stats = computeStats(allTrades, state.currentCode);
+    const dollarGain = Math.round((stats.pnlPct / 100) * currentCapital * 100) / 100;
+    const el = document.getElementById('dollarGainDisplay');
+    if (el) {
+      el.textContent = `${dollarGain >= 0 ? '+' : ''}$${dollarGain.toLocaleString()}`;
+      el.style.color = dollarGain >= 0 ? 'var(--text-success)' : 'var(--text-danger)';
+    }
+  }
 }
 
 async function renderWatchlist(container) {
@@ -4694,9 +4756,12 @@ async function fetchClassPulse() {
     const today = new Date().toISOString().slice(0, 10);
     const [{ data: trades }, { data: traders }] = await Promise.all([
       sb.from('trades').select('trade_date, result, instrument, emotional, trader_code'),
-      sb.from('traders').select('code, nickname')
+      sb.from('traders').select('code, nickname, starting_capital')
     ]);
     if (!trades) return;
+
+    const totalCapital = (traders || []).reduce((a, t) => a + (Number(t.starting_capital) || 0), 0);
+    const capitalContributors = (traders || []).filter(t => Number(t.starting_capital) > 0).length;
 
     const todayTrades = trades.filter(t => t.trade_date === today);
     const totalToday = todayTrades.length;
@@ -4737,7 +4802,7 @@ async function fetchClassPulse() {
       }
     });
 
-    _classPulse = { totalToday, avgWinRate, avgDiscipline, topInstrument, topPerformer };
+    _classPulse = { totalToday, avgWinRate, avgDiscipline, topInstrument, topPerformer, totalCapital, capitalContributors };
     renderMidPanel();
   } catch (e) { /* fail silently, non-critical */ }
 }
@@ -4799,7 +4864,18 @@ function renderMidPanel() {
       </div>`
     : `<div style="font-size:11px;color:var(--text-muted);text-align:center;">${_classPulse ? 'Not enough data yet.' : 'Loading…'}</div>`;
 
+  const totalCapitalHtml = (_classPulse && _classPulse.totalCapital > 0)
+    ? `<div style="text-align:center;">
+        <div style="font-family:var(--font-mono);font-size:26px;font-weight:700;color:var(--gold);text-shadow:0 0 12px rgba(212,175,55,0.4);">$${Math.round(_classPulse.totalCapital).toLocaleString()}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">across ${_classPulse.capitalContributors} trader${_classPulse.capitalContributors !== 1 ? 's' : ''}</div>
+      </div>`
+    : `<div style="font-size:11px;color:var(--text-muted);text-align:center;">${_classPulse ? 'No capital reported yet — add yours in Profile.' : 'Loading…'}</div>`;
+
   el.innerHTML = `
+    <div class="card" style="margin-bottom:10px;">
+      <div class="brand-mark" style="margin-bottom:10px;">CR8 TOTAL REAL-TIME CAPITAL</div>
+      ${totalCapitalHtml}
+    </div>
     <div class="card" style="margin-bottom:10px;">
       <div class="brand-mark" style="margin-bottom:10px;">MARKET PULSE</div>
       ${marketPulseHTML()}
