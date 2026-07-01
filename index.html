@@ -211,6 +211,38 @@
     from { transform: translateX(0); }
     to   { transform: translateX(-50%); }
   }
+
+  #header-ticker {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 26px;
+    background: rgba(5,5,5,0.9);
+    border-bottom: 1px solid rgba(212,175,55,0.15);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    z-index: 55;
+    overflow: hidden;
+    display: none;
+  }
+  body.has-header-ticker #header-ticker { display: block; }
+  body.has-header-ticker #app { margin-top: 26px; }
+  #header-ticker .ht-track {
+    display: flex; align-items: center; gap: 28px;
+    height: 100%;
+    white-space: nowrap;
+    animation: headerTickerScroll 32s linear infinite;
+    padding-left: 100%;
+  }
+  @keyframes headerTickerScroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-100%); }
+  }
+  #header-ticker .ht-item {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: inline-flex; align-items: center; gap: 6px;
+    flex-shrink: 0;
+  }
+  #header-ticker .ht-item .ht-sym { color: var(--gold); font-weight: 600; }
   .crypto-particle {
     position: absolute;
     font-family: var(--font-mono);
@@ -792,6 +824,7 @@
 <div id="bg-layer"></div>
 <div id="bg-overlay"></div>
 <div id="fx-layer"></div>
+<div id="header-ticker"></div>
 <div id="cr8-loader">
   <div class="loader-brand">CR8 TRADING</div>
   <div class="loader-stage">
@@ -1067,6 +1100,8 @@ function renderLogin() {
   stopQuoteWidget();
   const pwL = document.getElementById('priceWallLeft'); if (pwL) pwL.innerHTML = '';
   const pwR = document.getElementById('priceWallRight'); if (pwR) pwR.innerHTML = '';
+  document.body.classList.remove('has-header-ticker');
+  const ht = document.getElementById('header-ticker'); if (ht) ht.innerHTML = '';
   const ms = document.getElementById('market-sidebar');
   if (ms) ms.innerHTML = '';
   const sn = document.getElementById('side-nav');
@@ -4056,7 +4091,26 @@ async function fetchCryptoPrices() {
     })).filter(c => c.price != null);
     renderMarketSidebar();
     renderPriceWalls();
+    renderHeaderTicker();
   } catch (e) { /* offline or rate-limited — keep showing last known prices */ }
+}
+
+function renderHeaderTicker() {
+  const el = document.getElementById('header-ticker');
+  if (!el) return;
+  if (!state.currentCode || !_cryptoPrices || !_cryptoPrices.length) {
+    document.body.classList.remove('has-header-ticker');
+    el.innerHTML = '';
+    return;
+  }
+  document.body.classList.add('has-header-ticker');
+  const items = _cryptoPrices.map(c => {
+    const up = c.change != null && c.change >= 0;
+    const changeStr = c.change != null ? `${up ? '+' : ''}${c.change.toFixed(2)}%` : '—';
+    return `<span class="ht-item"><span class="ht-sym">${c.symbol}</span> $${formatPrice(c.price)} <span style="color:${up ? 'var(--text-success)' : 'var(--text-danger)'};">${up ? '▲' : '▼'} ${changeStr}</span></span>`;
+  });
+  const trackHtml = items.concat(items).join('<span style="color:var(--border);">•</span>');
+  el.innerHTML = `<div class="ht-track">${trackHtml}</div>`;
 }
 
 function renderPriceWalls() {
@@ -4112,7 +4166,7 @@ function cryptoTickerHTML() {
 
 function startCryptoTicker() {
   if (!_cryptoPrices) fetchCryptoPrices();
-  else renderPriceWalls();
+  else { renderPriceWalls(); renderHeaderTicker(); }
   if (_cryptoInterval) clearInterval(_cryptoInterval);
   _cryptoInterval = setInterval(fetchCryptoPrices, 30000);
 }
@@ -4204,22 +4258,22 @@ function setupBackgroundFX() {
     fx.appendChild(el);
   }
 
-  // Two ticker rows of candlesticks pinned to top and bottom edges, like a trading floor strip
-  [{ pos: 'top', speed: 75, height: 46, opacity: 0.28 }, { pos: 'bottom', speed: 95, height: 60, opacity: 0.24 }]
-    .forEach(rowCfg => {
-      const row = document.createElement('div');
-      row.className = 'ticker-row ' + rowCfg.pos;
-      row.style.opacity = rowCfg.opacity;
-      row.style.animationDuration = rowCfg.speed + 's';
-      let html = '';
-      for (let i = 0; i < 90; i++) {
-        const h = Math.round(rowCfg.height * (0.35 + Math.random() * 0.65));
-        const isGreen = Math.random() > 0.45;
-        html += `<div class="ticker-candle" style="height:${h}px;background:${isGreen ? '#f97316' : '#6b6b6b'};"></div>`;
-      }
-      row.innerHTML = html;
-      fx.appendChild(row);
-    });
+  // Decorative candlestick ticker row pinned to the bottom edge (top strip replaced by live price ticker)
+  {
+    const rowCfg = { pos: 'bottom', speed: 95, height: 60, opacity: 0.24 };
+    const row = document.createElement('div');
+    row.className = 'ticker-row ' + rowCfg.pos;
+    row.style.opacity = rowCfg.opacity;
+    row.style.animationDuration = rowCfg.speed + 's';
+    let html = '';
+    for (let i = 0; i < 90; i++) {
+      const h = Math.round(rowCfg.height * (0.35 + Math.random() * 0.65));
+      const isGreen = Math.random() > 0.45;
+      html += `<div class="ticker-candle" style="height:${h}px;background:${isGreen ? '#f97316' : '#6b6b6b'};"></div>`;
+    }
+    row.innerHTML = html;
+    fx.appendChild(row);
+  }
 
   // Floating crypto symbols drifting diagonally across the screen
   const cryptoSymbols = ['₿', 'Ξ', '◎', 'Ł', '$', '€', '⟠', '₮'];
