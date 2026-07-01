@@ -3845,16 +3845,40 @@ function fearGreedHTML() {
     </div>`;
 }
 
+function buildSparkline(prices) {
+  if (!prices || prices.length < 2) return '';
+  const blocks = '▁▂▃▄▅▆▇█';
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  // Sample down to ~7 points so it reads as a compact sparkline
+  const sampleCount = 7;
+  const step = Math.max(1, Math.floor(prices.length / sampleCount));
+  const sampled = [];
+  for (let i = 0; i < prices.length; i += step) sampled.push(prices[i]);
+  return sampled.map(p => {
+    const idx = Math.min(blocks.length - 1, Math.floor(((p - min) / range) * (blocks.length - 1)));
+    return blocks[idx];
+  }).join('');
+}
+
 async function fetchCryptoPrices() {
   try {
-    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${CRYPTO_IDS.join(',')}&vs_currencies=usd&include_24hr_change=true`);
+    const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${CRYPTO_IDS.join(',')}&sparkline=true&price_change_percentage=24h`);
     if (!res.ok) return;
     const data = await res.json();
-    _cryptoPrices = CRYPTO_IDS.map(id => ({
-      symbol: CRYPTO_SYMBOLS[id],
-      price: data[id] ? data[id].usd : null,
-      change: data[id] ? data[id].usd_24h_change : null
-    })).filter(c => c.price != null);
+    const byId = {};
+    data.forEach(c => byId[c.id] = c);
+    _cryptoPrices = CRYPTO_IDS.map(id => {
+      const c = byId[id];
+      if (!c) return null;
+      return {
+        symbol: CRYPTO_SYMBOLS[id],
+        price: c.current_price,
+        change: c.price_change_percentage_24h,
+        sparkline: c.sparkline_in_7d ? buildSparkline(c.sparkline_in_7d.price) : ''
+      };
+    }).filter(c => c && c.price != null);
     renderMarketSidebar();
   } catch (e) { /* offline or rate-limited — keep showing last known prices */ }
 }
@@ -3870,21 +3894,21 @@ function cryptoTickerHTML() {
     return `<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:8px 0;">Loading prices…</div>`;
   }
   return `
-    <div style="display:flex;flex-direction:column;gap:7px;">
+    <div style="display:flex;flex-direction:column;gap:9px;">
       ${_cryptoPrices.map(c => {
         const up = c.change != null && c.change >= 0;
         const changeStr = c.change != null ? `${up ? '+' : ''}${c.change.toFixed(2)}%` : '—';
+        const trendColor = up ? 'var(--text-success)' : 'var(--text-danger)';
         return `
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);">${c.symbol}</span>
-          <span style="display:flex;align-items:center;gap:6px;">
-            <span style="font-family:var(--font-mono);font-size:12px;">$${formatPrice(c.price)}</span>
-            <span style="font-family:var(--font-mono);font-size:11px;color:${up ? 'var(--text-success)' : 'var(--text-danger)'};min-width:52px;text-align:right;">${up ? '▲' : '▼'} ${changeStr}</span>
-          </span>
+          <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);width:34px;">${c.symbol}</span>
+          <span style="font-family:var(--font-mono);font-size:12px;">$${formatPrice(c.price)}</span>
+          <span style="font-family:var(--font-mono);font-size:11px;color:${trendColor};width:56px;text-align:right;">${up ? '+' : ''}${changeStr.replace('+','')}</span>
+          <span style="font-family:var(--font-mono);font-size:13px;color:${trendColor};letter-spacing:-1px;width:44px;text-align:right;">${c.sparkline || ''}</span>
         </div>`;
       }).join('')}
     </div>
-    <div style="font-size:9px;color:var(--text-muted);text-align:right;margin-top:8px;">via CoinGecko</div>`;
+    <div style="font-size:9px;color:var(--text-muted);text-align:right;margin-top:8px;">via CoinGecko &middot; 7d trend</div>`;
 }
 
 function startCryptoTicker() {
