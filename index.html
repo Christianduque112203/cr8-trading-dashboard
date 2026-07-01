@@ -497,6 +497,41 @@
   .chart-group { display: none; flex-direction: column; gap: 24px; }
   .chart-group.active { display: flex; animation: fadeIn 0.25s ease-out; }
 
+  .podium {
+    display: flex; align-items: flex-end; justify-content: center; gap: 10px;
+    margin: 8px 0 20px;
+  }
+  .podium-spot {
+    flex: 1; max-width: 130px;
+    display: flex; flex-direction: column; align-items: center;
+    text-align: center;
+  }
+  .podium-avatar {
+    width: 52px; height: 52px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 17px; color: #1a1605;
+    background: linear-gradient(135deg, #d4af37, #8a6d1f);
+    border: 2px solid var(--gold);
+    margin-bottom: 6px;
+    position: relative;
+  }
+  .podium-spot.p1 .podium-avatar { width: 64px; height: 64px; font-size: 20px; box-shadow: 0 0 22px rgba(212,175,55,0.55); }
+  .podium-spot.p2 .podium-avatar { background: linear-gradient(135deg, #d8d8d8, #9a9a9a); border-color: #c0c0c0; }
+  .podium-spot.p3 .podium-avatar { background: linear-gradient(135deg, #d99a6c, #a05a2c); border-color: #cd7f32; }
+  .podium-crown { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 18px; }
+  .podium-name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
+  .podium-stat { font-family: var(--font-mono); font-size: 13px; color: var(--gold); font-weight: 500; }
+  .podium-base {
+    width: 100%; margin-top: 8px; border-radius: 8px 8px 0 0;
+    background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
+    border: 0.5px solid var(--border); border-bottom: none;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-weight: 600; color: var(--text-muted);
+  }
+  .podium-spot.p1 .podium-base { height: 68px; font-size: 22px; color: var(--gold); border-color: var(--gold); }
+  .podium-spot.p2 .podium-base { height: 50px; font-size: 18px; }
+  .podium-spot.p3 .podium-base { height: 38px; font-size: 16px; }
+
   /* Vertical side navigation (wide screens only) */
   #side-nav {
     position: fixed;
@@ -3384,34 +3419,72 @@ function renderLeaderboard(container, leaderboard) {
     {key:'blend', label:'Overall'}, {key:'win', label:'Win rate'},
     {key:'discipline', label:'Discipline'}, {key:'pnl', label:'Gain %'}
   ];
-  const medals = ['🥇', '🥈', '🥉'];
+
+  // Value shown per row depends on the active sort
+  function primaryStat(r) {
+    if (state.sortBy === 'win') return { val: r.winRate + '%', label: 'win rate' };
+    if (state.sortBy === 'discipline') return { val: r.disciplineRate + '%', label: 'disciplined' };
+    if (state.sortBy === 'pnl') return { val: (r.pnlPct>=0?'+':'') + r.pnlPct + '%', label: 'gain' };
+    return { val: r.blend + '', label: 'overall' };
+  }
+
+  const top3 = leaderboard.slice(0, 3);
+  const rest = leaderboard.slice(3);
+  // Podium display order: 2nd, 1st, 3rd
+  const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean);
+  const posClass = { }; // map code -> p1/p2/p3
+  if (top3[0]) posClass[top3[0].code] = 'p1';
+  if (top3[1]) posClass[top3[1].code] = 'p2';
+  if (top3[2]) posClass[top3[2].code] = 'p3';
+  const rankNum = { }; leaderboard.forEach((r, i) => rankNum[r.code] = i + 1);
+
+  const podiumHtml = `
+    <div class="podium">
+      ${podiumOrder.map(r => {
+        const p = posClass[r.code];
+        const st = primaryStat(r);
+        const isMe = r.code === state.currentCode;
+        const crown = p === 'p1' ? '👑' : '';
+        return `
+          <div class="podium-spot ${p}">
+            <div class="podium-avatar">${crown ? `<span class="podium-crown">${crown}</span>` : ''}${getInitials(r.nick)}</div>
+            <div class="podium-name">${r.tier.icon} ${esc(r.nick)}${isMe ? ' <span style="color:var(--gold);">(you)</span>' : ''}</div>
+            <div class="podium-stat">${st.val}</div>
+            <div class="podium-base">${rankNum[r.code]}</div>
+          </div>`;
+      }).join('')}
+    </div>`;
+
   container.innerHTML = `
     <div class="fade-in">
-    <div style="display:flex;gap:8px;margin-bottom:12px;">
-      ${sortOptions.map(o => `<button class="sortbtn" data-sort="${o.key}" style="${state.sortBy===o.key?'border:2px solid var(--gold);color:var(--gold);':''}font-size:13px;">${o.label}</button>`).join('')}
+    <div class="chart-seg" style="margin-bottom:14px;">
+      ${sortOptions.map(o => `<button class="sortbtn ${state.sortBy===o.key?'active':''}" data-sort="${o.key}">${o.label}</button>`).join('')}
     </div>
-    <p class="muted" style="font-size:13px;margin-bottom:12px;">Trade details stay private. Only rates and percent gain are shown here.</p>
-    <div style="display:flex;flex-direction:column;gap:8px;">
-      ${leaderboard.map((r, i) => {
-        const rankClass = i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : '';
+
+    ${podiumHtml}
+
+    <p class="muted" style="font-size:12px;margin-bottom:12px;text-align:center;">Trade details stay private — only rates and % gain are shown.</p>
+
+    ${rest.length ? `<div style="display:flex;flex-direction:column;gap:8px;">
+      ${rest.map((r, idx) => {
+        const i = idx + 3;
         const isMe = r.code === state.currentCode;
+        const st = primaryStat(r);
         return `
-        <div class="card ${rankClass}" style="display:flex;align-items:center;gap:12px;padding:10px 14px;${isMe && !rankClass ? 'border:2px solid var(--gold);' : ''}">
-          <div style="width:24px;text-align:center;">
-            ${i < 3 ? `<span class="rank-badge">${medals[i]}</span>` : `<span style="font-family:var(--font-mono);font-size:14px;color:var(--text-muted);">${i+1}</span>`}
-          </div>
+        <div class="card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;${isMe ? 'border:1.5px solid var(--gold);' : ''}">
+          <div style="width:24px;text-align:center;font-family:var(--font-mono);font-size:14px;color:var(--text-muted);">${i+1}</div>
           <div class="avatar sm">${getInitials(r.nick)}</div>
-          <div style="flex:1;">
+          <div style="flex:1;min-width:0;">
             <div style="font-weight:500;"><span title="${r.tier.name}" style="margin-right:4px;">${r.tier.icon}</span>${esc(r.nick)}${isMe ? ' <span style="font-size:12px;color:var(--gold);">(you)</span>' : ''}${r.streak >= 3 && r.streakType === 'win' ? ' <span class="flame" style="font-size:14px;">🔥</span>' : ''}</div>
             <div style="font-size:12px;color:var(--text-secondary);">${r.total} trades${r.streak > 1 ? ` &nbsp;·&nbsp; ${r.streak} ${r.streakType === 'win' ? 'W' : 'L'} streak` : ''}</div>
           </div>
-          <div style="text-align:right;font-size:12px;color:var(--text-muted);">
-            <div style="font-family:var(--font-mono);font-weight:500;font-size:14px;color:var(--text-primary);">${r.pnlPct>=0?'+':''}${r.pnlPct}%</div>
-            ${r.winRate}% win &middot; ${r.disciplineRate}% disciplined
+          <div style="text-align:right;">
+            <div style="font-family:var(--font-mono);font-weight:500;font-size:15px;color:${state.sortBy==='pnl' ? (r.pnlPct>=0?'var(--text-success)':'var(--text-danger)') : 'var(--text-primary)'};">${st.val}</div>
+            <div style="font-size:11px;color:var(--text-muted);">${st.label}</div>
           </div>
         </div>`;
       }).join('')}
-    </div>
+    </div>` : (leaderboard.length <= 3 ? '' : '')}
     </div>`;
 
   container.querySelectorAll('.sortbtn').forEach(b => {
