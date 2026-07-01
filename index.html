@@ -138,6 +138,7 @@
     text-shadow: 0 0 12px rgba(212,175,55,0.4);
     text-align: center;
   }
+  #quoteText { transition: opacity 0.3s ease; }
   .prob-check {
     display: flex; align-items: center; gap: 10px;
     padding: 9px 12px;
@@ -995,6 +996,7 @@ function renderLogin() {
   if (_marketInterval) { clearInterval(_marketInterval); _marketInterval = null; }
   stopCryptoTicker();
   if (_fearGreedInterval) { clearInterval(_fearGreedInterval); _fearGreedInterval = null; }
+  stopQuoteWidget();
   const ms = document.getElementById('market-sidebar');
   if (ms) ms.innerHTML = '';
   const sn = document.getElementById('side-nav');
@@ -3845,40 +3847,59 @@ function fearGreedHTML() {
     </div>`;
 }
 
-function buildSparkline(prices) {
-  if (!prices || prices.length < 2) return '';
-  const blocks = '▁▂▃▄▅▆▇█';
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const range = max - min || 1;
-  // Sample down to ~7 points so it reads as a compact sparkline
-  const sampleCount = 7;
-  const step = Math.max(1, Math.floor(prices.length / sampleCount));
-  const sampled = [];
-  for (let i = 0; i < prices.length; i += step) sampled.push(prices[i]);
-  return sampled.map(p => {
-    const idx = Math.min(blocks.length - 1, Math.floor(((p - min) / range) * (blocks.length - 1)));
-    return blocks[idx];
-  }).join('');
+// Rotating trading psychology quotes — refreshes on an interval and on page load.
+const TRADING_QUOTES = [
+  'Protect capital.',
+  'Risk first. Profit second.',
+  'Patience pays professionals.',
+  'Trade probabilities, not predictions.',
+  'The market rewards discipline, not intelligence.',
+  'Plan the trade. Trade the plan.',
+  'Cut losses fast. Let winners run.',
+  'Your only job is risk management.',
+  'No setup, no trade.',
+  'Consistency beats intensity.',
+  'The best traders are the best losers.',
+  'Emotion is the enemy of edge.'
+];
+let _quoteIndex = Math.floor(Math.random() * TRADING_QUOTES.length);
+let _quoteInterval = null;
+
+function quoteWidgetHTML() {
+  return `<div style="text-align:center;padding:4px 0;">
+    <div style="font-family:var(--font-mono);font-size:13px;color:var(--gold);line-height:1.5;font-style:italic;" id="quoteText">"${esc(TRADING_QUOTES[_quoteIndex])}"</div>
+  </div>`;
+}
+
+function startQuoteWidget() {
+  if (_quoteInterval) clearInterval(_quoteInterval);
+  _quoteInterval = setInterval(() => {
+    _quoteIndex = (_quoteIndex + 1) % TRADING_QUOTES.length;
+    const el = document.getElementById('quoteText');
+    if (el) {
+      el.style.opacity = '0';
+      setTimeout(() => {
+        el.textContent = `"${TRADING_QUOTES[_quoteIndex]}"`;
+        el.style.opacity = '1';
+      }, 300);
+    }
+  }, 12000);
+}
+
+function stopQuoteWidget() {
+  if (_quoteInterval) { clearInterval(_quoteInterval); _quoteInterval = null; }
 }
 
 async function fetchCryptoPrices() {
   try {
-    const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${CRYPTO_IDS.join(',')}&sparkline=true&price_change_percentage=24h`);
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${CRYPTO_IDS.join(',')}&vs_currencies=usd&include_24hr_change=true`);
     if (!res.ok) return;
     const data = await res.json();
-    const byId = {};
-    data.forEach(c => byId[c.id] = c);
-    _cryptoPrices = CRYPTO_IDS.map(id => {
-      const c = byId[id];
-      if (!c) return null;
-      return {
-        symbol: CRYPTO_SYMBOLS[id],
-        price: c.current_price,
-        change: c.price_change_percentage_24h,
-        sparkline: c.sparkline_in_7d ? buildSparkline(c.sparkline_in_7d.price) : ''
-      };
-    }).filter(c => c && c.price != null);
+    _cryptoPrices = CRYPTO_IDS.map(id => ({
+      symbol: CRYPTO_SYMBOLS[id],
+      price: data[id] ? data[id].usd : null,
+      change: data[id] ? data[id].usd_24h_change : null
+    })).filter(c => c.price != null);
     renderMarketSidebar();
   } catch (e) { /* offline or rate-limited — keep showing last known prices */ }
 }
@@ -3894,21 +3915,21 @@ function cryptoTickerHTML() {
     return `<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:8px 0;">Loading prices…</div>`;
   }
   return `
-    <div style="display:flex;flex-direction:column;gap:9px;">
+    <div style="display:flex;flex-direction:column;gap:7px;">
       ${_cryptoPrices.map(c => {
         const up = c.change != null && c.change >= 0;
         const changeStr = c.change != null ? `${up ? '+' : ''}${c.change.toFixed(2)}%` : '—';
-        const trendColor = up ? 'var(--text-success)' : 'var(--text-danger)';
         return `
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);width:34px;">${c.symbol}</span>
-          <span style="font-family:var(--font-mono);font-size:12px;">$${formatPrice(c.price)}</span>
-          <span style="font-family:var(--font-mono);font-size:11px;color:${trendColor};width:56px;text-align:right;">${up ? '+' : ''}${changeStr.replace('+','')}</span>
-          <span style="font-family:var(--font-mono);font-size:13px;color:${trendColor};letter-spacing:-1px;width:44px;text-align:right;">${c.sparkline || ''}</span>
+          <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);">${c.symbol}</span>
+          <span style="display:flex;align-items:center;gap:6px;">
+            <span style="font-family:var(--font-mono);font-size:12px;">$${formatPrice(c.price)}</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:${up ? 'var(--text-success)' : 'var(--text-danger)'};min-width:52px;text-align:right;">${up ? '▲' : '▼'} ${changeStr}</span>
+          </span>
         </div>`;
       }).join('')}
     </div>
-    <div style="font-size:9px;color:var(--text-muted);text-align:right;margin-top:8px;">via CoinGecko &middot; 7d trend</div>`;
+    <div style="font-size:9px;color:var(--text-muted);text-align:right;margin-top:8px;">via CoinGecko</div>`;
 }
 
 function startCryptoTicker() {
@@ -3964,9 +3985,12 @@ function renderMarketSidebar() {
       <div class="brand-mark" style="margin-bottom:10px;">FEAR &amp; GREED</div>
       ${fearGreedHTML()}
     </div>
-    <div class="card">
+    <div class="card" style="margin-bottom:10px;">
       <div class="brand-mark" style="margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span class="live-dot" style="width:5px;height:5px;"></span>LIVE PRICES</div>
       ${cryptoTickerHTML()}
+    </div>
+    <div class="card">
+      ${quoteWidgetHTML()}
     </div>`;
 }
 
@@ -3978,6 +4002,7 @@ function startMarketClock() {
   if (!_fearGreed) fetchFearGreed();
   if (_fearGreedInterval) clearInterval(_fearGreedInterval);
   _fearGreedInterval = setInterval(fetchFearGreed, 60 * 60 * 1000); // hourly — index updates daily
+  startQuoteWidget();
 }
 
 function setupBackgroundFX() {
