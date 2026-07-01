@@ -1302,6 +1302,7 @@ function renderLogin() {
   if (_fearGreedInterval) { clearInterval(_fearGreedInterval); _fearGreedInterval = null; }
   stopQuoteWidget();
   stopMarketPulse();
+  stopClassPulse();
   const pwL = document.getElementById('priceWallLeft'); if (pwL) pwL.innerHTML = '';
   const pwR = document.getElementById('priceWallRight'); if (pwR) pwR.innerHTML = '';
   document.body.classList.remove('has-header-ticker');
@@ -4683,6 +4684,35 @@ function renderMarketSidebar() {
   renderMidPanel();
 }
 
+// CR8 Traders Pulse — today's class-wide activity, cached and refreshed periodically
+// (not on every 1s tick, to avoid hammering the database).
+let _classPulse = null;
+let _classPulseInterval = null;
+
+async function fetchClassPulse() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: trades } = await sb.from('trades').select('trade_date, result');
+    if (!trades) return;
+    const todayTrades = trades.filter(t => t.trade_date === today);
+    const totalToday = todayTrades.length;
+    const winsToday = todayTrades.filter(t => t.result === 'win').length;
+    const avgWinRate = totalToday ? Math.round((winsToday / totalToday) * 100) : null;
+    _classPulse = { totalToday, avgWinRate };
+    renderMidPanel();
+  } catch (e) { /* fail silently, non-critical */ }
+}
+
+function startClassPulse() {
+  if (!_classPulse) fetchClassPulse();
+  if (_classPulseInterval) clearInterval(_classPulseInterval);
+  _classPulseInterval = setInterval(fetchClassPulse, 60000);
+}
+
+function stopClassPulse() {
+  if (_classPulseInterval) { clearInterval(_classPulseInterval); _classPulseInterval = null; }
+}
+
 function renderMidPanel() {
   const el = document.getElementById('mid-panel');
   if (!el) return;
@@ -4696,14 +4726,31 @@ function renderMidPanel() {
       </div>`
     : `<div style="font-size:11px;color:var(--text-muted);text-align:center;">No upcoming session found.</div>`;
 
+  const classPulseHtml = _classPulse
+    ? `<div style="display:flex;justify-content:space-around;text-align:center;">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:20px;font-weight:600;color:var(--gold);">${_classPulse.totalToday}</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">TRADES TODAY</div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:20px;font-weight:600;color:${_classPulse.avgWinRate == null ? 'var(--text-muted)' : _classPulse.avgWinRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)'};">${_classPulse.avgWinRate == null ? '—' : _classPulse.avgWinRate + '%'}</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">AVG WIN RATE</div>
+        </div>
+      </div>`
+    : `<div style="font-size:11px;color:var(--text-muted);text-align:center;">Loading…</div>`;
+
   el.innerHTML = `
     <div class="card" style="margin-bottom:10px;">
       <div class="brand-mark" style="margin-bottom:10px;">MARKET PULSE</div>
       ${marketPulseHTML()}
     </div>
-    <div class="card">
+    <div class="card" style="margin-bottom:10px;">
       <div class="brand-mark" style="margin-bottom:10px;">NEXT SESSION</div>
       ${countdownHtml}
+    </div>
+    <div class="card">
+      <div class="brand-mark" style="margin-bottom:10px;">CR8 TRADERS PULSE</div>
+      ${classPulseHtml}
     </div>`;
 }
 
@@ -4717,6 +4764,7 @@ function startMarketClock() {
   _fearGreedInterval = setInterval(fetchFearGreed, 60 * 60 * 1000); // hourly — index updates daily
   startQuoteWidget();
   startMarketPulse();
+  startClassPulse();
 }
 
 function setupBackgroundFX() {
