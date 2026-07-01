@@ -243,6 +243,41 @@
     flex-shrink: 0;
   }
   #header-ticker .ht-item .ht-sym { color: var(--gold); font-weight: 600; }
+
+  @keyframes loginCardIn {
+    0% { opacity: 0; transform: translateY(18px) scale(0.98); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .login-card { animation: loginCardIn 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+  .login-card input:focus { box-shadow: 0 0 0 4px rgba(212,175,55,0.15); }
+
+  .login-stats {
+    display: flex; justify-content: center; gap: 22px;
+    margin: 18px 0 4px;
+  }
+  .login-stat { text-align: center; }
+  .login-stat .val {
+    font-family: var(--font-mono); font-size: 18px; font-weight: 600; color: var(--gold);
+  }
+  .login-stat .lbl { font-size: 10px; color: var(--text-muted); letter-spacing: 0.04em; margin-top: 2px; }
+
+  .login-widgets {
+    display: flex; gap: 12px; justify-content: center;
+    margin-top: 26px; flex-wrap: wrap;
+  }
+  .login-widget-card {
+    background: rgba(15,15,15,0.7);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    min-width: 150px;
+    animation: fadeIn 0.6s ease-out 0.2s both;
+  }
+  .login-widget-card .lw-label {
+    font-family: var(--font-mono); font-size: 9px; color: var(--gold);
+    letter-spacing: 0.12em; margin-bottom: 8px; opacity: 0.85;
+  }
   .crypto-particle {
     position: absolute;
     font-family: var(--font-mono);
@@ -1091,6 +1126,75 @@ async function init() {
   }
 }
 
+async function loadLoginStats() {
+  const el = document.getElementById('loginStats');
+  if (!el) return;
+  try {
+    const [{ data: traders }, { data: trades }] = await Promise.all([
+      sb.from('traders').select('code'),
+      sb.from('trades').select('trade_date')
+    ]);
+    const totalTraders = (traders || []).length;
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const tradesThisWeek = (trades || []).filter(t => t.trade_date >= oneWeekAgo).length;
+    const totalTrades = (trades || []).length;
+    if (totalTraders === 0 && totalTrades === 0) { el.innerHTML = ''; return; }
+    el.innerHTML = `
+      <div class="login-stat"><div class="val">${totalTraders}</div><div class="lbl">TRADERS</div></div>
+      <div class="login-stat"><div class="val">${totalTrades}</div><div class="lbl">TRADES LOGGED</div></div>
+      <div class="login-stat"><div class="val">${tradesThisWeek}</div><div class="lbl">THIS WEEK</div></div>`;
+  } catch (e) { el.innerHTML = ''; }
+}
+
+async function loadLoginWidgets() {
+  const el = document.getElementById('loginWidgets');
+  if (!el) return;
+
+  // Fear & Greed teaser
+  let fgHtml = `<div class="login-widget-card"><div class="lw-label">FEAR &amp; GREED</div><div style="font-size:11px;color:var(--text-muted);">Loading…</div></div>`;
+  try {
+    const res = await fetch('https://api.alternative.me/fng/?limit=1');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.data && data.data[0]) {
+        const v = parseInt(data.data[0].value, 10);
+        const label = data.data[0].value_classification;
+        const color = fearGreedColor(v);
+        fgHtml = `<div class="login-widget-card"><div class="lw-label">FEAR &amp; GREED</div>
+          <div style="font-family:var(--font-mono);font-size:20px;font-weight:600;color:${color};">${v}</div>
+          <div style="font-size:11px;color:${color};">${esc(label)}</div></div>`;
+      }
+    }
+  } catch (e) { /* keep loading state */ }
+
+  // Live price teaser (BTC + ETH only, keep it compact)
+  let priceHtml = `<div class="login-widget-card"><div class="lw-label">LIVE PRICES</div><div style="font-size:11px;color:var(--text-muted);">Loading…</div></div>`;
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true');
+    if (res.ok) {
+      const data = await res.json();
+      const rows = [
+        { sym: 'BTC', d: data.bitcoin },
+        { sym: 'ETH', d: data.ethereum }
+      ].filter(r => r.d);
+      if (rows.length) {
+        priceHtml = `<div class="login-widget-card"><div class="lw-label">LIVE PRICES</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            ${rows.map(r => {
+              const up = r.d.usd_24h_change >= 0;
+              return `<div style="display:flex;justify-content:space-between;gap:10px;font-family:var(--font-mono);font-size:12px;">
+                <span style="color:var(--text-secondary);">${r.sym}</span>
+                <span>$${formatPrice(r.d.usd)} <span style="color:${up ? 'var(--text-success)' : 'var(--text-danger)'};">${up ? '▲' : '▼'}</span></span>
+              </div>`;
+            }).join('')}
+          </div></div>`;
+      }
+    }
+  } catch (e) { /* keep loading state */ }
+
+  el.innerHTML = fgHtml + priceHtml;
+}
+
 function renderLogin() {
   stopLiveTicker();
   stopStatusBar();
@@ -1107,7 +1211,7 @@ function renderLogin() {
   const sn = document.getElementById('side-nav');
   if (sn) sn.innerHTML = '';
   app.innerHTML = `
-    <div style="max-width:380px;margin:40px auto 0;" class="fade-in">
+    <div class="login-card" style="max-width:380px;margin:40px auto 0;">
       <div style="text-align:center;margin-bottom:1.5rem;">
         <div style="display:flex;justify-content:center;">${candleStrip(13)}</div>
         <div class="brand-mark">CR8 TRADING</div>
@@ -1118,8 +1222,16 @@ function renderLogin() {
       <input id="loginCode" placeholder="Enter your code" style="width:100%;margin-bottom:16px;font-family:var(--font-mono);" />
       <button id="loginBtn" style="width:100%;">Enter dashboard</button>
       <p id="loginMsg" class="muted" style="font-size:12px;margin-top:12px;"></p>
+
+      <div class="login-stats" id="loginStats"></div>
+
+      <div class="login-widgets" id="loginWidgets"></div>
+
       <p style="text-align:center;margin-top:24px;"><a href="#" id="adminLink" style="font-size:12px;color:var(--text-muted);text-decoration:none;">Mentor admin</a></p>
     </div>`;
+
+  loadLoginStats();
+  loadLoginWidgets();
 
   document.getElementById('adminLink').onclick = (e) => { e.preventDefault(); renderAdmin(); };
 
