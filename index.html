@@ -1288,6 +1288,7 @@ function renderLogin() {
   stopCryptoTicker();
   if (_fearGreedInterval) { clearInterval(_fearGreedInterval); _fearGreedInterval = null; }
   stopQuoteWidget();
+  stopMarketPulse();
   const pwL = document.getElementById('priceWallLeft'); if (pwL) pwL.innerHTML = '';
   const pwR = document.getElementById('priceWallRight'); if (pwR) pwR.innerHTML = '';
   document.body.classList.remove('has-header-ticker');
@@ -4367,6 +4368,120 @@ function stopQuoteWidget() {
   if (_quoteInterval) { clearInterval(_quoteInterval); _quoteInterval = null; }
 }
 
+// Global crypto market pulse: trending searches, top movers, and market-wide stats.
+// All from CoinGecko's free public endpoints — no key required.
+let _marketPulse = { trending: null, gainers: null, losers: null, global: null };
+let _marketPulseInterval = null;
+
+async function fetchMarketPulse() {
+  try {
+    const [trendingRes, marketsRes, globalRes] = await Promise.all([
+      fetch('https://api.coingecko.com/api/v3/search/trending'),
+      fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h'),
+      fetch('https://api.coingecko.com/api/v3/global')
+    ]);
+
+    if (trendingRes.ok) {
+      const data = await trendingRes.json();
+      _marketPulse.trending = (data.coins || []).slice(0, 5).map(c => ({
+        symbol: c.item.symbol.toUpperCase(),
+        rank: c.item.market_cap_rank
+      }));
+    }
+
+    if (marketsRes.ok) {
+      const data = await marketsRes.json();
+      const withChange = data.filter(c => c.price_change_percentage_24h != null);
+      const sorted = [...withChange].sort((a, b) => b.price_change_percentage_24h - a.price_change_percentage_24h);
+      _marketPulse.gainers = sorted.slice(0, 3).map(c => ({ symbol: c.symbol.toUpperCase(), change: c.price_change_percentage_24h }));
+      _marketPulse.losers = sorted.slice(-3).reverse().map(c => ({ symbol: c.symbol.toUpperCase(), change: c.price_change_percentage_24h }));
+    }
+
+    if (globalRes.ok) {
+      const data = await globalRes.json();
+      const g = data.data;
+      if (g) {
+        _marketPulse.global = {
+          marketCap: g.total_market_cap ? g.total_market_cap.usd : null,
+          marketCapChange: g.market_cap_change_percentage_24h_usd,
+          btcDominance: g.market_cap_percentage ? g.market_cap_percentage.btc : null,
+          ethDominance: g.market_cap_percentage ? g.market_cap_percentage.eth : null
+        };
+      }
+    }
+
+    renderMarketSidebar();
+  } catch (e) { /* offline or rate-limited — keep last known values */ }
+}
+
+function formatMarketCap(v) {
+  if (v == null) return '—';
+  if (v >= 1e12) return '$' + (v / 1e12).toFixed(2) + 'T';
+  if (v >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B';
+  return '$' + v.toLocaleString();
+}
+
+function marketPulseHTML() {
+  const p = _marketPulse;
+  if (!p.trending && !p.gainers && !p.global) {
+    return `<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:8px 0;">Loading…</div>`;
+  }
+
+  let html = '';
+
+  if (p.global) {
+    const mcUp = p.global.marketCapChange != null && p.global.marketCapChange >= 0;
+    html += `
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+          <span style="color:var(--text-secondary);">Total Market Cap</span>
+          <span style="font-family:var(--font-mono);">${formatMarketCap(p.global.marketCap)} <span style="color:${mcUp ? 'var(--text-success)' : 'var(--text-danger)'};">${mcUp ? '▲' : '▼'}${Math.abs(p.global.marketCapChange || 0).toFixed(1)}%</span></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span style="color:var(--text-secondary);">BTC Dominance</span>
+          <span style="font-family:var(--font-mono);color:var(--gold);">${p.global.btcDominance ? p.global.btcDominance.toFixed(1) + '%' : '—'}</span>
+        </div>
+      </div>`;
+  }
+
+  if (p.trending && p.trending.length) {
+    html += `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">🔥 Trending searches</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${p.trending.map(t => `<span style="font-family:var(--font-mono);font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(212,175,55,0.1);color:var(--gold);border:0.5px solid rgba(212,175,55,0.3);">${esc(t.symbol)}</span>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  if (p.gainers && p.gainers.length) {
+    html += `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <div style="font-size:10px;color:var(--text-success);margin-bottom:5px;">▲ TOP GAINERS</div>
+          ${p.gainers.map(c => `<div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--font-mono);margin-bottom:3px;"><span>${esc(c.symbol)}</span><span style="color:var(--text-success);">+${c.change.toFixed(1)}%</span></div>`).join('')}
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text-danger);margin-bottom:5px;">▼ TOP LOSERS</div>
+          ${p.losers.map(c => `<div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--font-mono);margin-bottom:3px;"><span>${esc(c.symbol)}</span><span style="color:var(--text-danger);">${c.change.toFixed(1)}%</span></div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  return html;
+}
+
+function startMarketPulse() {
+  if (!_marketPulse.trending) fetchMarketPulse();
+  else renderMarketSidebar();
+  if (_marketPulseInterval) clearInterval(_marketPulseInterval);
+  _marketPulseInterval = setInterval(fetchMarketPulse, 90000); // every 90s — this endpoint is heavier, refresh less often
+}
+
+function stopMarketPulse() {
+  if (_marketPulseInterval) { clearInterval(_marketPulseInterval); _marketPulseInterval = null; }
+}
+
 async function fetchCryptoPrices() {
   try {
     const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${CRYPTO_IDS.join(',')}&vs_currencies=usd&include_24hr_change=true`);
@@ -4509,6 +4624,10 @@ function renderMarketSidebar() {
     <div class="card" style="margin-bottom:10px;">
       <div class="brand-mark" style="margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span class="live-dot" style="width:5px;height:5px;"></span>LIVE PRICES</div>
       ${cryptoTickerHTML()}
+    </div>
+    <div class="card">
+      <div class="brand-mark" style="margin-bottom:10px;">MARKET PULSE</div>
+      ${marketPulseHTML()}
     </div>`;
 }
 
@@ -4521,6 +4640,7 @@ function startMarketClock() {
   if (_fearGreedInterval) clearInterval(_fearGreedInterval);
   _fearGreedInterval = setInterval(fetchFearGreed, 60 * 60 * 1000); // hourly — index updates daily
   startQuoteWidget();
+  startMarketPulse();
 }
 
 function setupBackgroundFX() {
