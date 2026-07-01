@@ -279,6 +279,33 @@
     letter-spacing: 0.12em; margin-bottom: 8px; opacity: 0.85;
   }
 
+  .pulse-panel {
+    font-family: var(--font-mono);
+    border: 1px solid rgba(212,175,55,0.35);
+    border-radius: var(--radius);
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(212,175,55,0.05), var(--surface-1));
+  }
+  .pulse-panel .pulse-title {
+    text-align: center; color: var(--gold); font-size: 12px;
+    letter-spacing: 0.15em; font-weight: 600; margin-bottom: 4px;
+  }
+  .pulse-panel .pulse-rule {
+    text-align: center; color: rgba(212,175,55,0.3); font-size: 10px; margin-bottom: 10px; letter-spacing: 0.1em;
+  }
+  .pulse-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 2px; font-size: 12px;
+  }
+  .pulse-row .pk { color: var(--text-muted); letter-spacing: 0.04em; }
+  .pulse-row .pv { font-weight: 600; letter-spacing: 0.03em; }
+  .pulse-note {
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px dashed rgba(212,175,55,0.25);
+    font-size: 11px; color: var(--text-secondary); line-height: 1.5;
+    text-align: center;
+  }
+
   .terminal-input-wrap {
     position: relative;
     margin-bottom: 16px;
@@ -3254,6 +3281,61 @@ function renderCharts(container, trades) {
       </div>
     </div>`;
   }
+  // ===== CR8 Institutional Pulse =====
+  // A market-context snapshot built from real data already fetched (Fear & Greed + crypto momentum).
+  // Deliberately informational, not a trade signal — no directional "buy/sell" instruction.
+  const pulseHTML = (() => {
+    const hasFG = typeof _fearGreed !== 'undefined' && _fearGreed;
+    const hasPrices = typeof _cryptoPrices !== 'undefined' && _cryptoPrices && _cryptoPrices.length;
+    if (!hasFG && !hasPrices) {
+      return `<div class="pulse-panel"><div class="pulse-title">CR8 INSTITUTIONAL PULSE</div><div class="pulse-rule">━━━━━━━━━━━━━━━━━━━━</div>
+        <p class="muted" style="font-size:12px;text-align:center;">Market data loads once you're on the dashboard with live prices connected.</p></div>`;
+    }
+
+    const fgVal = hasFG ? _fearGreed.value : 50;
+    const fgLabel = hasFG ? _fearGreed.label : 'Unavailable';
+    const fgColor = hasFG ? fearGreedColor(fgVal) : 'var(--text-muted)';
+
+    // Momentum bias from BTC/ETH average 24h change
+    const majors = hasPrices ? _cryptoPrices.filter(c => c.symbol === 'BTC' || c.symbol === 'ETH') : [];
+    const avgChange = majors.length ? majors.reduce((a, c) => a + (c.change || 0), 0) / majors.length : 0;
+    let bias, biasColor;
+    if (avgChange >= 1.5) { bias = 'BULLISH'; biasColor = 'var(--text-success)'; }
+    else if (avgChange <= -1.5) { bias = 'BEARISH'; biasColor = 'var(--text-danger)'; }
+    else { bias = 'NEUTRAL'; biasColor = '#fbbf24'; }
+
+    // Volatility proxy from spread of 24h changes across tracked coins
+    const allChanges = hasPrices ? _cryptoPrices.map(c => Math.abs(c.change || 0)) : [];
+    const avgAbsChange = allChanges.length ? allChanges.reduce((a, b) => a + b, 0) / allChanges.length : 0;
+    let volatility, volColor;
+    if (avgAbsChange >= 4) { volatility = 'HIGH'; volColor = 'var(--text-danger)'; }
+    else if (avgAbsChange >= 1.5) { volatility = 'MODERATE'; volColor = '#fbbf24'; }
+    else { volatility = 'LOW'; volColor = 'var(--text-success)'; }
+
+    // Trend strength from magnitude of average momentum
+    const trendStrength = Math.abs(avgChange) >= 3 ? 'STRONG' : Math.abs(avgChange) >= 1 ? 'MODERATE' : 'WEAK';
+
+    // Confidence — a simple composite of how much data is actually available (not a market prediction)
+    let dataPoints = 0;
+    if (hasFG) dataPoints++;
+    if (hasPrices) dataPoints++;
+    if (majors.length === 2) dataPoints++;
+    const confidence = Math.round((dataPoints / 3) * 100);
+
+    return `
+    <div class="pulse-panel">
+      <div class="pulse-title">CR8 INSTITUTIONAL PULSE</div>
+      <div class="pulse-rule">━━━━━━━━━━━━━━━━━━━━</div>
+      <div class="pulse-row"><span class="pk">Bias</span><span class="pv" style="color:${biasColor};">${bias}</span></div>
+      <div class="pulse-row"><span class="pk">Trend</span><span class="pv" style="color:${biasColor};">${trendStrength}</span></div>
+      <div class="pulse-row"><span class="pk">Volatility</span><span class="pv" style="color:${volColor};">${volatility}</span></div>
+      <div class="pulse-row"><span class="pk">Fear &amp; Greed</span><span class="pv" style="color:${fgColor};">${esc(fgLabel).toUpperCase()}</span></div>
+      <div class="pulse-row"><span class="pk">Data confidence</span><span class="pv" style="color:var(--gold);">${confidence}%</span></div>
+      <div class="pulse-rule">━━━━━━━━━━━━━━━━━━━━</div>
+      <div class="pulse-note">This reflects current crypto momentum &amp; sentiment data — it is context, not a trade signal. Apply your own rules and risk management.</div>
+    </div>`;
+  })();
+
   const sustainHTML = `
     <div class="card tilt-card" style="border-color:${sustainColor};background:linear-gradient(135deg, ${sustainColor}14, var(--surface-1));">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -3290,6 +3372,7 @@ function renderCharts(container, trades) {
       </div>
 
       <div class="chart-group active" data-group="overview">
+        ${pulseHTML}
         ${sustainHTML}
         ${heatmapHTML}
         <div class="card">
