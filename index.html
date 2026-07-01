@@ -1863,6 +1863,11 @@ async function renderDashboard() {
         <button id="logoutBtn">Log out</button>
       </div>
     </div>
+
+    <div class="card fade-in" style="margin-bottom:1.25rem;padding:14px 20px;text-align:center;border-color:rgba(212,175,55,0.3);">
+      <span id="quoteText" style="font-family:var(--font-mono);font-size:14px;color:var(--gold);font-style:italic;">"${esc(TRADING_QUOTES[_quoteIndex])}"</span>
+    </div>
+
     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px;margin-bottom:1.5rem;" class="fade-in">
       ${metricCard('Trades logged', stats.total)}
       ${metricCard('Win rate', stats.winRate + '%')}
@@ -4021,9 +4026,6 @@ function renderMarketSidebar() {
     <div class="card" style="margin-bottom:10px;">
       <div class="brand-mark" style="margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span class="live-dot" style="width:5px;height:5px;"></span>LIVE PRICES</div>
       ${cryptoTickerHTML()}
-    </div>
-    <div class="card">
-      ${quoteWidgetHTML()}
     </div>`;
 }
 
