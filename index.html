@@ -119,6 +119,19 @@
   @media (min-width: 1240px) {
     #market-sidebar { display: block; }
   }
+
+  #mid-panel {
+    position: fixed;
+    top: 50%; right: 268px;
+    transform: translateY(-50%);
+    width: 260px;
+    z-index: 2;
+    display: none;
+  }
+  /* Only show once there's genuine open space between the content column and the sidebar */
+  @media (min-width: 1700px) {
+    #mid-panel { display: block; }
+  }
   .session-row {
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px 0;
@@ -958,6 +971,7 @@
 </div>
 <div id="app"></div>
 <div id="market-sidebar"></div>
+<div id="mid-panel"></div>
 <div id="side-nav"></div>
 <div class="price-wall left" id="priceWallLeft"></div>
 <div class="price-wall right" id="priceWallRight"></div>
@@ -1295,6 +1309,8 @@ function renderLogin() {
   const ht = document.getElementById('header-ticker'); if (ht) ht.innerHTML = '';
   const ms = document.getElementById('market-sidebar');
   if (ms) ms.innerHTML = '';
+  const mp = document.getElementById('mid-panel');
+  if (mp) mp.innerHTML = '';
   const sn = document.getElementById('side-nav');
   if (sn) sn.innerHTML = '';
   app.innerHTML = `
@@ -4621,10 +4637,19 @@ function renderMarketSidebar() {
       <div class="brand-mark" style="margin-bottom:10px;">FEAR &amp; GREED</div>
       ${fearGreedHTML()}
     </div>
-    <div class="card" style="margin-bottom:10px;">
+    <div class="card">
       <div class="brand-mark" style="margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span class="live-dot" style="width:5px;height:5px;"></span>LIVE PRICES</div>
       ${cryptoTickerHTML()}
-    </div>
+    </div>`;
+
+  renderMidPanel();
+}
+
+function renderMidPanel() {
+  const el = document.getElementById('mid-panel');
+  if (!el) return;
+  if (!state.currentCode) { el.innerHTML = ''; return; }
+  el.innerHTML = `
     <div class="card">
       <div class="brand-mark" style="margin-bottom:10px;">MARKET PULSE</div>
       ${marketPulseHTML()}
