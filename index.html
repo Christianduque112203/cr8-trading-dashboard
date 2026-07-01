@@ -532,6 +532,17 @@
   .podium-spot.p2 .podium-base { height: 50px; font-size: 18px; }
   .podium-spot.p3 .podium-base { height: 38px; font-size: 16px; }
 
+  .form-steps { display: flex; gap: 6px; margin-bottom: 18px; }
+  .form-step-pip {
+    flex: 1; display: flex; flex-direction: column; gap: 5px; cursor: pointer;
+  }
+  .form-step-pip .bar { height: 4px; border-radius: 2px; background: var(--surface-2); transition: background 0.2s ease; }
+  .form-step-pip.active .bar, .form-step-pip.done .bar { background: var(--gold); }
+  .form-step-pip .lbl { font-size: 10px; color: var(--text-muted); transition: color 0.2s ease; }
+  .form-step-pip.active .lbl { color: var(--gold); font-weight: 500; }
+  .form-step { display: none; }
+  .form-step.active { display: block; animation: fadeIn 0.25s ease-out; }
+
   /* Vertical side navigation (wide screens only) */
   #side-nav {
     position: fixed;
@@ -2062,96 +2073,134 @@ async function renderWatchlist(container) {
 function renderLogForm(container) {
   container.innerHTML = `
     <div class="fade-in" style="max-width:480px;">
-      <label>Trade screenshot</label>
-      <input type="file" id="imgInput" accept="image/*" style="margin-bottom:8px;" />
-      <div id="imgPreviewWrap" style="margin-bottom:12px;"></div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-        <div><label>Date</label><input type="date" id="dateInput" style="width:100%;" /></div>
-        <div><label>Time</label><input type="time" id="timeInput" style="width:100%;" /></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-        <div><label>Instrument</label><input id="instrumentInput" placeholder="EUR/USD" style="width:100%;" /></div>
-        <div><label>Strategy / setup</label><input id="strategyInput" placeholder="Breakout" style="width:100%;" /></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
-        <div><label>Outcome</label>
-          <select id="resultInput" style="width:100%;"><option value="win">Win</option><option value="loss">Loss</option></select></div>
-        <div><label>P&L (%)</label><input type="number" step="0.1" id="pnlInput" placeholder="2.5" style="width:100%;" /></div>
-        <div><label>Risk:reward</label><input id="rrInput" placeholder="1:2" style="width:100%;" /></div>
-      </div>
-      <label>Rules of engagement</label>
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <button id="disciplinedBtn" style="flex:1;border:2px solid var(--border-accent);">Followed rules</button>
-        <button id="emotionalBtn" style="flex:1;">Got emotional</button>
+      <div class="form-steps">
+        <div class="form-step-pip active" data-step="0"><div class="bar"></div><div class="lbl">1 · The Trade</div></div>
+        <div class="form-step-pip" data-step="1"><div class="bar"></div><div class="lbl">2 · Execution</div></div>
+        <div class="form-step-pip" data-step="2"><div class="bar"></div><div class="lbl">3 · Reflection</div></div>
       </div>
 
-      <label>Rule violations</label>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Be honest — check any rules you broke on this trade.</div>
-      <div id="violationList">
-        <div class="prob-check" data-violation="Entered early"><span class="box">✓</span><span style="font-size:13px;">Entered early</span></div>
-        <div class="prob-check" data-violation="Moved stop loss"><span class="box">✓</span><span style="font-size:13px;">Moved stop loss</span></div>
-        <div class="prob-check" data-violation="Over leveraged"><span class="box">✓</span><span style="font-size:13px;">Over leveraged</span></div>
-        <div class="prob-check" data-violation="Revenge trade"><span class="box">✓</span><span style="font-size:13px;">Revenge trade</span></div>
-        <div class="prob-check" data-violation="No clear setup"><span class="box">✓</span><span style="font-size:13px;">No clear setup</span></div>
-        <div class="prob-check" data-violation="Ignored higher timeframe"><span class="box">✓</span><span style="font-size:13px;">Ignored higher timeframe</span></div>
-      </div>
-      <div style="margin-bottom:16px;"></div>
+      <div class="form-step active" data-stepc="0">
+        <label>Trade screenshot</label>
+        <input type="file" id="imgInput" accept="image/*" style="margin-bottom:8px;" />
+        <div id="imgPreviewWrap" style="margin-bottom:12px;"></div>
 
-      <label>Setup quality checklist</label>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">How well did this setup match your plan? Check what applied.</div>
-      <div id="probChecklist">
-        <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Clear market structure</span></div>
-        <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Liquidity / key level present</span></div>
-        <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Volume confirmation</span></div>
-        <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Higher timeframe aligned</span></div>
-        <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Risk properly defined</span></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 16px;">
-        <span style="font-size:13px;color:var(--text-secondary);">Setup probability</span>
-        <span id="probValue" style="font-family:var(--font-mono);font-weight:500;font-size:18px;color:var(--gold);">0%</span>
-      </div>
-      <div class="prob-meter-track"><div class="prob-meter-fill" id="probFill" style="width:0%;"></div></div>
-
-      <label style="margin-top:16px;">Execution self-rating</label>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Rate how well you executed — honestly, regardless of profit.</div>
-      <div style="margin-bottom:12px;">
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
-          <span>Patience (waited for your setup)</span>
-          <span id="patienceVal" style="font-family:var(--font-mono);color:var(--gold);">75</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div><label>Date</label><input type="date" id="dateInput" style="width:100%;" /></div>
+          <div><label>Time</label><input type="time" id="timeInput" style="width:100%;" /></div>
         </div>
-        <input type="range" id="patienceSlider" min="0" max="100" value="75" style="width:100%;accent-color:var(--gold);" />
-      </div>
-      <div style="margin-bottom:16px;">
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
-          <span>Exit (closed per your plan)</span>
-          <span id="exitVal" style="font-family:var(--font-mono);color:var(--gold);">75</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div><label>Instrument</label><input id="instrumentInput" placeholder="EUR/USD" style="width:100%;" /></div>
+          <div><label>Strategy / setup</label><input id="strategyInput" placeholder="Breakout" style="width:100%;" /></div>
         </div>
-        <input type="range" id="exitSlider" min="0" max="100" value="75" style="width:100%;accent-color:var(--gold);" />
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div><label>Outcome</label>
+            <select id="resultInput" style="width:100%;"><option value="win">Win</option><option value="loss">Loss</option></select></div>
+          <div><label>P&L (%)</label><input type="number" step="0.1" id="pnlInput" placeholder="2.5" style="width:100%;" /></div>
+          <div><label>Risk:reward</label><input id="rrInput" placeholder="1:2" style="width:100%;" /></div>
+        </div>
+        <button class="form-next" data-goto="1" style="width:100%;margin-top:6px;">Next: Execution →</button>
       </div>
 
-      <label style="margin-top:16px;">Trade Story</label>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Turn this trade into a case study you can learn from later.</div>
+      <div class="form-step" data-stepc="1">
+        <label>Rules of engagement</label>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <button id="disciplinedBtn" style="flex:1;border:2px solid var(--border-accent);">Followed rules</button>
+          <button id="emotionalBtn" style="flex:1;">Got emotional</button>
+        </div>
 
-      <label style="font-size:12px;">Why did you enter?</label>
-      <textarea id="storyWhy" rows="2" placeholder="What made this a trade worth taking?" style="width:100%;margin-bottom:10px;"></textarea>
+        <label>Rule violations</label>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Be honest — check any rules you broke on this trade.</div>
+        <div id="violationList">
+          <div class="prob-check" data-violation="Entered early"><span class="box">✓</span><span style="font-size:13px;">Entered early</span></div>
+          <div class="prob-check" data-violation="Moved stop loss"><span class="box">✓</span><span style="font-size:13px;">Moved stop loss</span></div>
+          <div class="prob-check" data-violation="Over leveraged"><span class="box">✓</span><span style="font-size:13px;">Over leveraged</span></div>
+          <div class="prob-check" data-violation="Revenge trade"><span class="box">✓</span><span style="font-size:13px;">Revenge trade</span></div>
+          <div class="prob-check" data-violation="No clear setup"><span class="box">✓</span><span style="font-size:13px;">No clear setup</span></div>
+          <div class="prob-check" data-violation="Ignored higher timeframe"><span class="box">✓</span><span style="font-size:13px;">Ignored higher timeframe</span></div>
+        </div>
+        <div style="margin-bottom:16px;"></div>
 
-      <label style="font-size:12px;">What were you feeling?</label>
-      <textarea id="storyFeeling" rows="2" placeholder="Calm? Anxious? Confident? FOMO?" style="width:100%;margin-bottom:10px;"></textarea>
+        <label>Setup quality checklist</label>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">How well did this setup match your plan? Check what applied.</div>
+        <div id="probChecklist">
+          <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Clear market structure</span></div>
+          <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Liquidity / key level present</span></div>
+          <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Volume confirmation</span></div>
+          <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Higher timeframe aligned</span></div>
+          <div class="prob-check" data-check><span class="box">✓</span><span style="font-size:13px;">Risk properly defined</span></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 16px;">
+          <span style="font-size:13px;color:var(--text-secondary);">Setup probability</span>
+          <span id="probValue" style="font-family:var(--font-mono);font-weight:500;font-size:18px;color:var(--gold);">0%</span>
+        </div>
+        <div class="prob-meter-track"><div class="prob-meter-fill" id="probFill" style="width:0%;"></div></div>
 
-      <label style="font-size:12px;">Would you take this trade again?</label>
-      <div style="display:flex;gap:8px;margin-bottom:10px;">
-        <button type="button" id="againYes" class="story-again-btn" data-again="Yes" style="flex:1;">Yes</button>
-        <button type="button" id="againNo" class="story-again-btn" data-again="No" style="flex:1;">No</button>
-        <button type="button" id="againMaybe" class="story-again-btn" data-again="With changes" style="flex:1;">With changes</button>
+        <label style="margin-top:16px;">Execution self-rating</label>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Rate how well you executed — honestly, regardless of profit.</div>
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+            <span>Patience (waited for your setup)</span>
+            <span id="patienceVal" style="font-family:var(--font-mono);color:var(--gold);">75</span>
+          </div>
+          <input type="range" id="patienceSlider" min="0" max="100" value="75" style="width:100%;accent-color:var(--gold);" />
+        </div>
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+            <span>Exit (closed per your plan)</span>
+            <span id="exitVal" style="font-family:var(--font-mono);color:var(--gold);">75</span>
+          </div>
+          <input type="range" id="exitSlider" min="0" max="100" value="75" style="width:100%;accent-color:var(--gold);" />
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="form-back" data-goto="0" style="flex:1;">← Back</button>
+          <button class="form-next" data-goto="2" style="flex:2;">Next: Reflection →</button>
+        </div>
       </div>
 
-      <label style="font-size:12px;">Lessons learned</label>
-      <textarea id="storyLesson" rows="2" placeholder="What will you carry into your next trade?" style="width:100%;margin-bottom:16px;"></textarea>
+      <div class="form-step" data-stepc="2">
+        <label>Trade Story</label>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Turn this trade into a case study you can learn from later.</div>
 
-      <button id="submitTrade" style="width:100%;">Log trade</button>
-      <p id="submitMsg" class="muted" style="font-size:12px;margin-top:8px;"></p>
+        <label style="font-size:12px;">Why did you enter?</label>
+        <textarea id="storyWhy" rows="2" placeholder="What made this a trade worth taking?" style="width:100%;margin-bottom:10px;"></textarea>
+
+        <label style="font-size:12px;">What were you feeling?</label>
+        <textarea id="storyFeeling" rows="2" placeholder="Calm? Anxious? Confident? FOMO?" style="width:100%;margin-bottom:10px;"></textarea>
+
+        <label style="font-size:12px;">Would you take this trade again?</label>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <button type="button" id="againYes" class="story-again-btn" data-again="Yes" style="flex:1;">Yes</button>
+          <button type="button" id="againNo" class="story-again-btn" data-again="No" style="flex:1;">No</button>
+          <button type="button" id="againMaybe" class="story-again-btn" data-again="With changes" style="flex:1;">With changes</button>
+        </div>
+
+        <label style="font-size:12px;">Lessons learned</label>
+        <textarea id="storyLesson" rows="2" placeholder="What will you carry into your next trade?" style="width:100%;margin-bottom:16px;"></textarea>
+
+        <div style="display:flex;gap:8px;">
+          <button class="form-back" data-goto="1" style="flex:1;">← Back</button>
+          <button id="submitTrade" style="flex:2;">Log trade</button>
+        </div>
+        <p id="submitMsg" class="muted" style="font-size:12px;margin-top:8px;"></p>
+      </div>
     </div>`;
+
+  // Step navigation
+  function goToStep(n) {
+    container.querySelectorAll('.form-step').forEach(s => s.classList.toggle('active', s.dataset.stepc == n));
+    container.querySelectorAll('.form-step-pip').forEach(p => {
+      const idx = parseInt(p.dataset.step, 10);
+      p.classList.toggle('active', idx === n);
+      p.classList.toggle('done', idx < n);
+    });
+    container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  container.querySelectorAll('.form-next, .form-back').forEach(b => {
+    b.onclick = () => goToStep(parseInt(b.dataset.goto, 10));
+  });
+  container.querySelectorAll('.form-step-pip').forEach(p => {
+    p.onclick = () => goToStep(parseInt(p.dataset.step, 10));
+  });
 
   document.getElementById('dateInput').value = new Date().toISOString().slice(0,10);
   state.emotionalVal = false;
