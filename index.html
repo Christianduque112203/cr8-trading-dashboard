@@ -4692,13 +4692,52 @@ let _classPulseInterval = null;
 async function fetchClassPulse() {
   try {
     const today = new Date().toISOString().slice(0, 10);
-    const { data: trades } = await sb.from('trades').select('trade_date, result');
+    const [{ data: trades }, { data: traders }] = await Promise.all([
+      sb.from('trades').select('trade_date, result, instrument, emotional, trader_code'),
+      sb.from('traders').select('code, nickname')
+    ]);
     if (!trades) return;
+
     const todayTrades = trades.filter(t => t.trade_date === today);
     const totalToday = todayTrades.length;
     const winsToday = todayTrades.filter(t => t.result === 'win').length;
     const avgWinRate = totalToday ? Math.round((winsToday / totalToday) * 100) : null;
-    _classPulse = { totalToday, avgWinRate };
+    const disciplinedToday = todayTrades.filter(t => !t.emotional).length;
+    const avgDiscipline = totalToday ? Math.round((disciplinedToday / totalToday) * 100) : null;
+
+    // Most-traded instrument today
+    const instrumentCounts = {};
+    todayTrades.forEach(t => {
+      if (t.instrument) {
+        const key = t.instrument.toUpperCase();
+        instrumentCounts[key] = (instrumentCounts[key] || 0) + 1;
+      }
+    });
+    const topInstrumentEntry = Object.entries(instrumentCounts).sort((a, b) => b[1] - a[1])[0];
+    const topInstrument = topInstrumentEntry ? { name: topInstrumentEntry[0], count: topInstrumentEntry[1] } : null;
+
+    // Top performer (by blended win rate + discipline, same formula as leaderboard "Overall")
+    const nickOf = {};
+    (traders || []).forEach(tr => nickOf[tr.code] = tr.nickname);
+    const byTrader = {};
+    trades.forEach(t => {
+      if (!byTrader[t.trader_code]) byTrader[t.trader_code] = { wins: 0, total: 0, disciplined: 0 };
+      byTrader[t.trader_code].total++;
+      if (t.result === 'win') byTrader[t.trader_code].wins++;
+      if (!t.emotional) byTrader[t.trader_code].disciplined++;
+    });
+    let topPerformer = null;
+    Object.entries(byTrader).forEach(([code, s]) => {
+      if (s.total < 3) return; // require a minimum sample so a single lucky trade doesn't top the board
+      const wr = (s.wins / s.total) * 100;
+      const dr = (s.disciplined / s.total) * 100;
+      const blend = wr * 0.5 + dr * 0.5;
+      if (!topPerformer || blend > topPerformer.blend) {
+        topPerformer = { code, nickname: nickOf[code] || code, blend: Math.round(blend) };
+      }
+    });
+
+    _classPulse = { totalToday, avgWinRate, avgDiscipline, topInstrument, topPerformer };
     renderMidPanel();
   } catch (e) { /* fail silently, non-critical */ }
 }
@@ -4736,8 +4775,29 @@ function renderMidPanel() {
           <div style="font-family:var(--font-mono);font-size:20px;font-weight:600;color:${_classPulse.avgWinRate == null ? 'var(--text-muted)' : _classPulse.avgWinRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)'};">${_classPulse.avgWinRate == null ? '—' : _classPulse.avgWinRate + '%'}</div>
           <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">AVG WIN RATE</div>
         </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:20px;font-weight:600;color:${_classPulse.avgDiscipline == null ? 'var(--text-muted)' : _classPulse.avgDiscipline >= 70 ? 'var(--text-success)' : '#fbbf24'};">${_classPulse.avgDiscipline == null ? '—' : _classPulse.avgDiscipline + '%'}</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">DISCIPLINE</div>
+        </div>
       </div>`
     : `<div style="font-size:11px;color:var(--text-muted);text-align:center;">Loading…</div>`;
+
+  const topInstrumentHtml = (_classPulse && _classPulse.topInstrument)
+    ? `<div style="text-align:center;">
+        <div style="font-family:var(--font-mono);font-size:20px;font-weight:600;color:var(--gold);">${esc(_classPulse.topInstrument.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${_classPulse.topInstrument.count} trade${_classPulse.topInstrument.count !== 1 ? 's' : ''} today</div>
+      </div>`
+    : `<div style="font-size:11px;color:var(--text-muted);text-align:center;">${_classPulse ? 'No trades logged today yet.' : 'Loading…'}</div>`;
+
+  const topPerformerHtml = (_classPulse && _classPulse.topPerformer)
+    ? `<div style="display:flex;align-items:center;gap:10px;">
+        <div class="avatar sm">${getInitials(_classPulse.topPerformer.nickname)}</div>
+        <div style="flex:1;">
+          <div style="font-weight:500;font-size:13px;">👑 ${esc(_classPulse.topPerformer.nickname)}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${_classPulse.topPerformer.blend} overall score</div>
+        </div>
+      </div>`
+    : `<div style="font-size:11px;color:var(--text-muted);text-align:center;">${_classPulse ? 'Not enough data yet.' : 'Loading…'}</div>`;
 
   el.innerHTML = `
     <div class="card" style="margin-bottom:10px;">
@@ -4748,9 +4808,17 @@ function renderMidPanel() {
       <div class="brand-mark" style="margin-bottom:10px;">NEXT SESSION</div>
       ${countdownHtml}
     </div>
-    <div class="card">
+    <div class="card" style="margin-bottom:10px;">
       <div class="brand-mark" style="margin-bottom:10px;">CR8 TRADERS PULSE</div>
       ${classPulseHtml}
+    </div>
+    <div class="card" style="margin-bottom:10px;">
+      <div class="brand-mark" style="margin-bottom:10px;">TOP INSTRUMENT TODAY</div>
+      ${topInstrumentHtml}
+    </div>
+    <div class="card">
+      <div class="brand-mark" style="margin-bottom:10px;">TOP PERFORMER</div>
+      ${topPerformerHtml}
     </div>`;
 }
 
