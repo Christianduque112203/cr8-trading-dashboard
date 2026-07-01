@@ -1280,11 +1280,31 @@ async function renderAdminContent(tab) {
     const disciplineRate = total ? Math.round((disciplined / total) * 100) : 0;
     const netGain = t.reduce((a, tr) => a + Number(tr.pnl_pct), 0);
 
-    const lastTrade = t.sort((a, b) => b.trade_date.localeCompare(a.trade_date))[0];
+    const sortedByDate = [...t].sort((a, b) => (a.trade_date + a.trade_time).localeCompare(b.trade_date + b.trade_time));
+    const lastTrade = [...t].sort((a, b) => b.trade_date.localeCompare(a.trade_date))[0];
     const lastDate = lastTrade ? lastTrade.trade_date : null;
 
     const recentTrades = t.filter(tr => tr.trade_date >= oneWeekAgo).length;
     const prevTrades = t.filter(tr => tr.trade_date >= twoWeeksAgo && tr.trade_date < oneWeekAgo).length;
+
+    // Rank tier
+    const tier = computeTier(trades || [], trader.code);
+    // Avg quality score
+    const avgQuality = total ? Math.round(t.map(tr => computeTradeQuality(tr).overall).reduce((a, b) => a + b, 0) / total) : null;
+    // Most-broken rule
+    const vCounts = {};
+    t.forEach(tr => (tr.rule_violations || []).forEach(v => vCounts[v] = (vCounts[v] || 0) + 1));
+    const topViol = Object.entries(vCounts).sort((a, b) => b[1] - a[1])[0];
+    // Recent form — last 6 trades W/L
+    const recentForm = sortedByDate.slice(-6).map(tr => tr.result === 'win');
+    // Current streak
+    let curStreak = 0, streakType = null;
+    for (let i = sortedByDate.length - 1; i >= 0; i--) {
+      const isWin = sortedByDate[i].result === 'win';
+      if (streakType === null) { streakType = isWin ? 'win' : 'loss'; curStreak = 1; }
+      else if ((isWin && streakType === 'win') || (!isWin && streakType === 'loss')) curStreak++;
+      else break;
+    }
 
     let status, statusColor, statusBg;
     if (total === 0) {
@@ -1298,9 +1318,18 @@ async function renderAdminContent(tab) {
     }
 
     const struggling = total >= 5 && (disciplineRate < 50 || winRate < 30);
+    // Priority score for sorting: struggling + inactive float to top
+    let priority = 0;
+    if (struggling) priority += 100;
+    if (status === 'Inactive') priority += 50;
+    if (streakType === 'loss' && curStreak >= 3) priority += 40;
+    if (status === 'Low activity') priority += 20;
 
-    return { trader, total, winRate, disciplineRate, netGain: Math.round(netGain * 10) / 10, lastDate, recentTrades, prevTrades, status, statusColor, statusBg, struggling };
+    return { trader, total, winRate, disciplineRate, netGain: Math.round(netGain * 10) / 10, lastDate, recentTrades, prevTrades, status, statusColor, statusBg, struggling, tier, avgQuality, topViol, recentForm, curStreak, streakType, priority };
   });
+
+  // Sort: students needing attention first, then by activity
+  rows.sort((a, b) => b.priority - a.priority || b.total - a.total);
 
   // Summary row
   const totalStudents = rows.length;
@@ -1323,19 +1352,28 @@ async function renderAdminContent(tab) {
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <div class="avatar sm">${getInitials(r.trader.nickname)}</div>
               <div style="flex:1;min-width:120px;">
-                <div style="font-weight:500;">${esc(r.trader.nickname)} <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);">${esc(r.trader.code)}</span></div>
-                <div style="font-size:12px;color:var(--text-muted);">Last trade: ${r.lastDate || 'never'}</div>
+                <div style="font-weight:500;">${r.total > 0 ? `<span title="${r.tier.name}" style="margin-right:3px;">${r.tier.icon}</span>` : ''}${esc(r.trader.nickname)} <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);">${esc(r.trader.code)}</span></div>
+                <div style="font-size:12px;color:var(--text-muted);">${r.total > 0 ? r.tier.name + ' · ' : ''}Last trade: ${r.lastDate || 'never'}</div>
               </div>
               <span style="font-size:12px;padding:2px 10px;border-radius:var(--radius);background:${r.statusBg};color:${r.statusColor};">${r.status}</span>
             </div>
 
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;text-align:center;">
+            ${r.total > 0 ? `
+            <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+              <span style="font-size:11px;color:var(--text-muted);">Recent form:</span>
+              <div style="display:flex;gap:3px;">
+                ${r.recentForm.map(w => `<span style="width:14px;height:14px;border-radius:3px;background:${w ? 'var(--text-success)' : 'var(--text-danger)'};display:inline-block;"></span>`).join('')}
+              </div>
+              ${r.curStreak >= 3 ? `<span style="font-size:11px;color:${r.streakType === 'win' ? 'var(--text-success)' : 'var(--text-danger)'};">${r.curStreak}${r.streakType === 'win' ? 'W 🔥' : 'L streak'}</span>` : ''}
+            </div>` : ''}
+
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px;text-align:center;">
               <div>
                 <div style="font-size:11px;color:var(--text-muted);">Trades</div>
                 <div style="font-family:var(--font-mono);font-weight:500;">${r.total}</div>
               </div>
               <div>
-                <div style="font-size:11px;color:var(--text-muted);">Win rate</div>
+                <div style="font-size:11px;color:var(--text-muted);">Win</div>
                 <div style="font-family:var(--font-mono);font-weight:500;color:${r.winRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)'};">${r.winRate}%</div>
               </div>
               <div>
@@ -1343,14 +1381,19 @@ async function renderAdminContent(tab) {
                 <div style="font-family:var(--font-mono);font-weight:500;color:${r.disciplineRate >= 70 ? 'var(--text-success)' : 'var(--text-danger)'};">${r.disciplineRate}%</div>
               </div>
               <div>
-                <div style="font-size:11px;color:var(--text-muted);">Net gain</div>
+                <div style="font-size:11px;color:var(--text-muted);">Quality</div>
+                <div style="font-family:var(--font-mono);font-weight:500;color:${r.avgQuality == null ? 'var(--text-muted)' : r.avgQuality >= 70 ? 'var(--text-success)' : r.avgQuality >= 50 ? '#fbbf24' : 'var(--text-danger)'};">${r.avgQuality == null ? '—' : r.avgQuality}</div>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);">Net</div>
                 <div style="font-family:var(--font-mono);font-weight:500;color:${r.netGain >= 0 ? 'var(--text-success)' : 'var(--text-danger)'};">${r.netGain >= 0 ? '+' : ''}${r.netGain}%</div>
               </div>
             </div>
 
+            ${r.topViol ? `<div style="margin-top:10px;font-size:12px;color:var(--text-secondary);">Most-broken rule: <span style="color:var(--text-danger);">${esc(r.topViol[0])}</span> (${r.topViol[1]}×)</div>` : ''}
             ${r.struggling ? `<div style="margin-top:10px;font-size:12px;padding:6px 10px;border-radius:var(--radius);background:rgba(251,191,36,0.1);color:#fbbf24;">⚠️ Needs attention — low discipline or win rate. Consider reaching out.</div>` : ''}
-            ${r.recentTrades > r.prevTrades && r.prevTrades >= 0 ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">↑ ${r.recentTrades} trades this week vs ${r.prevTrades} last week</div>` : ''}
-            ${r.prevTrades > r.recentTrades ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">↓ ${r.recentTrades} trades this week vs ${r.prevTrades} last week</div>` : ''}
+            ${r.streakType === 'loss' && r.curStreak >= 3 && !r.struggling ? `<div style="margin-top:10px;font-size:12px;padding:6px 10px;border-radius:var(--radius);background:rgba(96,165,250,0.1);color:#60a5fa;">🧘 On a ${r.curStreak}-loss streak — might need encouragement.</div>` : ''}
+            ${r.recentTrades !== r.prevTrades ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">${r.recentTrades > r.prevTrades ? '↑' : '↓'} ${r.recentTrades} trades this week vs ${r.prevTrades} last week</div>` : ''}
             ${r.total > 0 ? `<button class="admin-review-btn" data-code="${esc(r.trader.code)}" data-nick="${esc(r.trader.nickname)}" style="margin-top:12px;width:100%;font-size:13px;">Review ${r.trader.nickname.split(' ')[0]}'s trades</button>` : ''}
           </div>`).join('')}
       </div>
