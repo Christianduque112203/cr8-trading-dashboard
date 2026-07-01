@@ -4258,23 +4258,6 @@ function setupBackgroundFX() {
     fx.appendChild(el);
   }
 
-  // Decorative candlestick ticker row pinned to the bottom edge (top strip replaced by live price ticker)
-  {
-    const rowCfg = { pos: 'bottom', speed: 95, height: 60, opacity: 0.24 };
-    const row = document.createElement('div');
-    row.className = 'ticker-row ' + rowCfg.pos;
-    row.style.opacity = rowCfg.opacity;
-    row.style.animationDuration = rowCfg.speed + 's';
-    let html = '';
-    for (let i = 0; i < 90; i++) {
-      const h = Math.round(rowCfg.height * (0.35 + Math.random() * 0.65));
-      const isGreen = Math.random() > 0.45;
-      html += `<div class="ticker-candle" style="height:${h}px;background:${isGreen ? '#f97316' : '#6b6b6b'};"></div>`;
-    }
-    row.innerHTML = html;
-    fx.appendChild(row);
-  }
-
   // Floating crypto symbols drifting diagonally across the screen
   const cryptoSymbols = ['₿', 'Ξ', '◎', 'Ł', '$', '€', '⟠', '₮'];
   const cryptoCount = 10;
