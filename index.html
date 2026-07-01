@@ -1812,6 +1812,7 @@ async function renderAdminContent(tab) {
             ${r.streakType === 'loss' && r.curStreak >= 3 && !r.struggling ? `<div style="margin-top:10px;font-size:12px;padding:6px 10px;border-radius:var(--radius);background:rgba(96,165,250,0.1);color:#60a5fa;">🧘 On a ${r.curStreak}-loss streak — might need encouragement.</div>` : ''}
             ${r.recentTrades !== r.prevTrades ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">${r.recentTrades > r.prevTrades ? '↑' : '↓'} ${r.recentTrades} trades this week vs ${r.prevTrades} last week</div>` : ''}
             ${r.total > 0 ? `<button class="admin-review-btn" data-code="${esc(r.trader.code)}" data-nick="${esc(r.trader.nickname)}" style="margin-top:12px;width:100%;font-size:13px;">Review ${r.trader.nickname.split(' ')[0]}'s trades</button>` : ''}
+            <button class="admin-delete-student-btn" data-code="${esc(r.trader.code)}" data-nick="${esc(r.trader.nickname)}" style="margin-top:8px;width:100%;font-size:12px;color:var(--text-danger);border-color:var(--text-danger);">Delete student profile</button>
           </div>`).join('')}
       </div>
     </div>`;
@@ -1819,6 +1820,49 @@ async function renderAdminContent(tab) {
   content.querySelectorAll('.admin-review-btn').forEach(b => {
     b.onclick = () => openAdminTradeReview(b.dataset.code, b.dataset.nick, trades);
   });
+  content.querySelectorAll('.admin-delete-student-btn').forEach(b => {
+    b.onclick = () => openDeleteStudentModal(b.dataset.code, b.dataset.nick);
+  });
+}
+
+function openDeleteStudentModal(code, nick) {
+  const overlay = document.createElement('div');
+  overlay.id = 'delete-student-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:320;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn 0.25s ease-out;';
+  overlay.innerHTML = `
+    <div class="card" style="max-width:420px;width:100%;border-color:var(--text-danger);">
+      <div class="brand-mark" style="color:var(--text-danger);">⚠ DELETE STUDENT PROFILE</div>
+      <h2 style="margin-top:6px;font-size:18px;">${esc(nick)}</h2>
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:10px;line-height:1.6;">
+        This permanently deletes <strong>${esc(nick)}'s</strong> account, all their logged trades, watchlist items, and homework progress. This cannot be undone.
+      </p>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:10px;">Type <span style="font-family:var(--font-mono);color:var(--gold);">${esc(code)}</span> below to confirm.</p>
+      <input id="deleteConfirmInput" placeholder="Enter trader code to confirm" style="width:100%;margin-top:8px;font-family:var(--font-mono);" />
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button id="cancelDeleteStudent" style="flex:1;">Cancel</button>
+        <button id="confirmDeleteStudent" style="flex:1;background:var(--bg-danger);border-color:var(--text-danger);color:var(--text-danger);">Delete permanently</button>
+      </div>
+      <p id="deleteStudentMsg" class="muted" style="font-size:12px;margin-top:10px;"></p>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  document.getElementById('cancelDeleteStudent').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  document.getElementById('confirmDeleteStudent').onclick = async () => {
+    const typed = document.getElementById('deleteConfirmInput').value.trim().toUpperCase();
+    const msg = document.getElementById('deleteStudentMsg');
+    if (typed !== code.toUpperCase()) {
+      msg.textContent = 'Code does not match. Please type it exactly to confirm.';
+      return;
+    }
+    msg.textContent = 'Deleting…';
+    const { error } = await sb.rpc('delete_student', { p_trader_code: code, p_admin_password: state.adminPass });
+    if (error) { msg.textContent = 'Could not delete. Try unlocking admin again.'; return; }
+    msg.textContent = 'Student deleted.';
+    setTimeout(() => { close(); renderAdminContent('overview'); }, 700);
+  };
 }
 
 function openAdminTradeReview(code, nick, allTrades) {
@@ -1839,6 +1883,7 @@ function openAdminTradeReview(code, nick, allTrades) {
           <div style="font-size:11px;color:var(--text-muted);">${t.result}${t.emotional ? ' · emotional' : ''}${(t.rule_violations && t.rule_violations.length) ? ' · ' + t.rule_violations.length + ' violation(s)' : ''}</div>
         </div>
         <button class="review-toggle" data-id="${t.id}" data-reviewed="${t.reviewed ? '1' : '0'}" style="font-size:12px;flex-shrink:0;${t.reviewed ? 'border-color:var(--gold);color:var(--gold);' : ''}">${t.reviewed ? '✓ Reviewed' : 'Mark reviewed'}</button>
+        <button class="delete-trade-btn" data-id="${t.id}" style="font-size:12px;flex-shrink:0;color:var(--text-danger);border-color:var(--text-danger);">Delete</button>
       </div>`;
   }
 
@@ -1875,6 +1920,32 @@ function openAdminTradeReview(code, nick, allTrades) {
       btn.style.borderColor = newState ? 'var(--gold)' : '';
       btn.style.color = newState ? 'var(--gold)' : '';
       msg.textContent = newState ? 'Marked as reviewed.' : 'Review removed.';
+    };
+  });
+
+  overlay.querySelectorAll('.delete-trade-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const msg = document.getElementById('reviewMsg');
+      if (btn.dataset.confirming !== '1') {
+        btn.dataset.confirming = '1';
+        btn.textContent = 'Confirm delete?';
+        btn.style.background = 'var(--bg-danger)';
+        setTimeout(() => {
+          if (btn.dataset.confirming === '1') {
+            btn.dataset.confirming = '0';
+            btn.textContent = 'Delete';
+            btn.style.background = '';
+          }
+        }, 4000);
+        return;
+      }
+      msg.textContent = 'Deleting…';
+      const { error } = await sb.rpc('delete_trade', { p_trade_id: id, p_admin_password: state.adminPass });
+      if (error) { msg.textContent = 'Could not delete. Try unlocking admin again.'; return; }
+      const row = overlay.querySelector(`[data-trade-row="${id}"]`);
+      if (row) row.remove();
+      msg.textContent = 'Trade deleted.';
     };
   });
 }
