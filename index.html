@@ -1344,6 +1344,7 @@ function renderLogin() {
       </div>
 
       <p style="text-align:center;margin-top:24px;"><a href="#" id="adminLink" style="font-size:12px;color:var(--text-muted);text-decoration:none;">Mentor admin</a></p>
+      <p style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:16px;">Trading involves risk. Past performance does not guarantee future results.</p>
     </div>`;
 
   loadLoginStats();
@@ -2271,6 +2272,7 @@ async function renderDashboard() {
       <button class="tabbtn ${state.tab==='dna'?'active':''}" data-tab="dna">🧬 Trader DNA</button>
     </div>
     <div id="tabContent"></div>
+    <p style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:32px;padding-bottom:20px;">Trading involves risk. Past performance does not guarantee future results.</p>
   `;
 
   document.getElementById('logoutBtn').onclick = () => {
@@ -4630,6 +4632,8 @@ function marketPulseHTML() {
         </div>
       </div>`;
   }
+
+  html += `<div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:10px;padding-top:8px;border-top:0.5px dashed var(--border);">Trading involves risk. Past performance does not guarantee future results.</div>`;
 
   return html;
 }
