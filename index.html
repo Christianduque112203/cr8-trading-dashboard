@@ -3735,6 +3735,35 @@ function showTierUpCelebration(tier) {
 // Market sessions clock — shows live UTC time and which major forex sessions are open.
 let _marketInterval = null;
 
+function getMarketStatus() {
+  const now = new Date();
+  const utcHour = now.getUTCHours() + now.getUTCMinutes() / 60;
+  const day = now.getUTCDay();
+
+  // Forex: closed roughly Fri 21:00 UTC to Sun 21:00 UTC
+  const forexOpen = !((day === 6) || (day === 0 && utcHour < 21) || (day === 5 && utcHour >= 21));
+
+  // Crypto: always trades
+  const cryptoOpen = true;
+
+  // NYSE: 9:30am-4:00pm US/Eastern, Mon-Fri (approximated via UTC offset; ignores holidays)
+  // US/Eastern is UTC-5 (EST) or UTC-4 (EDT) — use Intl to get the real local hour reliably.
+  const nyParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hour: 'numeric', minute: 'numeric', hour12: false, weekday: 'short'
+  }).formatToParts(now);
+  const nyHour = parseInt(nyParts.find(p => p.type === 'hour').value, 10);
+  const nyMinute = parseInt(nyParts.find(p => p.type === 'minute').value, 10);
+  const nyWeekday = nyParts.find(p => p.type === 'weekday').value;
+  const nyTimeDecimal = nyHour + nyMinute / 60;
+  const nyseOpen = !['Sat', 'Sun'].includes(nyWeekday) && nyTimeDecimal >= 9.5 && nyTimeDecimal < 16;
+
+  return [
+    { name: 'Forex', open: forexOpen },
+    { name: 'Crypto', open: cryptoOpen },
+    { name: 'NYSE', open: nyseOpen }
+  ];
+}
+
 function getSessionStatus() {
   // Session hours in UTC (approximate standard forex hours)
   const sessions = [
@@ -3879,8 +3908,21 @@ function renderMarketSidebar() {
   const utcTime = now.toLocaleTimeString('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const sessions = getSessionStatus();
   const anyOpen = sessions.some(s => s.open);
+  const marketStatus = getMarketStatus();
 
   el.innerHTML = `
+    <div class="card" style="margin-bottom:10px;">
+      <div class="brand-mark" style="margin-bottom:10px;">MARKET STATUS</div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        ${marketStatus.map(m => `
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;">${esc(m.name)}</span>
+            <span style="font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:0.05em;color:${m.open ? 'var(--text-success)' : 'var(--text-danger)'};display:flex;align-items:center;gap:5px;">
+              <span class="session-dot ${m.open ? 'open' : 'closed'}"></span>${m.open ? 'OPEN' : 'CLOSED'}
+            </span>
+          </div>`).join('')}
+      </div>
+    </div>
     <div class="card" style="margin-bottom:10px;">
       <div class="brand-mark" style="margin-bottom:8px;">MARKET SESSIONS</div>
       <div class="clock-display">${utcTime}</div>
