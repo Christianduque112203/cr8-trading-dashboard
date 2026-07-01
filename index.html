@@ -481,6 +481,22 @@
   }
   .rank-connector.filled { background: var(--gold); }
 
+  .chart-seg {
+    display: flex; gap: 4px; margin-bottom: 4px;
+    background: var(--surface-2); border-radius: var(--radius); padding: 4px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .chart-seg::-webkit-scrollbar { display: none; }
+  .chart-seg button {
+    flex: 1; white-space: nowrap; border: none; background: transparent;
+    color: var(--text-secondary); font-size: 12px; font-weight: 500;
+    padding: 8px 12px; border-radius: 6px; cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease;
+  }
+  .chart-seg button.active { background: var(--gold); color: #1a1605; }
+  .chart-group { display: none; flex-direction: column; gap: 24px; }
+  .chart-group.active { display: flex; animation: fadeIn 0.25s ease-out; }
+
   /* Vertical side navigation (wide screens only) */
   #side-nav {
     position: fixed;
@@ -2816,180 +2832,207 @@ function renderCharts(container, trades) {
     </div>`;
 
   container.innerHTML = `
-    <div class="fade-in" style="display:flex;flex-direction:column;gap:24px;">
+    <div class="fade-in" style="display:flex;flex-direction:column;gap:16px;">
 
-      ${sustainHTML}
-
-      ${heatmapHTML}
-
-      <div class="card">
-        <div style="font-weight:500;margin-bottom:4px;">Equity Curve</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Cumulative % gain across all trades</div>
-        <canvas id="equityChart" height="140"></canvas>
+      <div class="chart-seg" id="chartSeg">
+        <button data-cg="overview" class="active">Overview</button>
+        <button data-cg="performance">Performance</button>
+        <button data-cg="psychology">Psychology</button>
+        <button data-cg="edge">Edge</button>
       </div>
 
-      <div class="card">
-        <div style="font-weight:500;margin-bottom:4px;">Win Rate Trend</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Rolling 5-trade win rate</div>
-        <canvas id="winChart" height="120"></canvas>
-      </div>
-
-      <div class="card">
-        <div style="font-weight:500;margin-bottom:4px;">Discipline Trend</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Rolling 5-trade discipline rate</div>
-        <canvas id="discChart" height="120"></canvas>
-      </div>
-
-      <div class="card">
-        <div style="font-weight:500;margin-bottom:4px;">Weekly Consistency</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Your trades by day of week 🟢 win 🔴 loss</div>
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          ${weekdayRows.map(r => `
-            <div style="display:flex;align-items:center;gap:12px;">
-              <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);width:36px;">${r.name}</span>
-              <span style="flex:1;font-size:15px;letter-spacing:1px;word-break:break-all;">${r.dots}</span>
-              <span style="font-family:var(--font-mono);font-size:12px;color:${r.count ? (r.winRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)') : 'var(--text-muted)'};width:54px;text-align:right;">${r.count ? r.winRate + '%' : ''}</span>
-            </div>`).join('')}
+      <div class="chart-group active" data-group="overview">
+        ${sustainHTML}
+        ${heatmapHTML}
+        <div class="card">
+          <div style="font-weight:500;margin-bottom:4px;">Equity Curve</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Cumulative % gain across all trades</div>
+          <canvas id="equityChart" height="140"></canvas>
         </div>
       </div>
 
-      <div class="card">
-        <div style="font-weight:500;margin-bottom:4px;">Best Trading Hours</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Win rate by market session — find when you perform best</div>
-        ${sessionRows.length === 0 ? `<p class="muted" style="font-size:13px;">Log trades with times to see this.</p>` : `
-        <div style="display:flex;flex-direction:column;gap:12px;">
-          ${sessionRows.map(s => `
-            <div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                <span style="font-size:13px;">${esc(s.name)} <span style="color:var(--text-muted);font-size:11px;">(${s.count} trade${s.count !== 1 ? 's' : ''})</span></span>
-                <span style="font-family:var(--font-mono);font-weight:500;font-size:13px;color:${s.winRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)'};">${s.winRate}%</span>
-              </div>
-              <div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;">
-                <div style="height:100%;width:${s.winRate}%;background:linear-gradient(90deg, #8a6d1f, var(--gold));border-radius:4px;transition:width 0.6s ease;"></div>
-              </div>
-            </div>`).join('')}
-        </div>`}
-      </div>
-
-      <div class="card">
-        <div style="font-weight:500;margin-bottom:4px;">Rule Violations</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">How often you break each rule — awareness is the first fix</div>
-        ${violationRows.length === 0 ? `<p class="muted" style="font-size:13px;">No rule violations logged. Either flawless discipline or time to start being honest on the log. 💪</p>` : `
-        <div style="display:flex;flex-direction:column;gap:12px;">
-          ${violationRows.map(v => `
-            <div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                <span style="font-size:13px;">⚠ ${esc(v.name)} <span style="color:var(--text-muted);font-size:11px;">(${v.count}\u00d7)</span></span>
-                <span style="font-family:var(--font-mono);font-weight:500;font-size:13px;color:${v.pct >= 25 ? 'var(--text-danger)' : v.pct >= 10 ? '#fbbf24' : 'var(--text-secondary)'};">${v.pct}%</span>
-              </div>
-              <div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;">
-                <div style="height:100%;width:${v.pct}%;background:linear-gradient(90deg, #7a2020, var(--text-danger));border-radius:4px;transition:width 0.6s ease;"></div>
-              </div>
-            </div>`).join('')}
+      <div class="chart-group" data-group="performance">
+        <div class="card">
+          <div style="font-weight:500;margin-bottom:4px;">Win Rate Trend</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Rolling 5-trade win rate</div>
+          <canvas id="winChart" height="120"></canvas>
         </div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:12px;">${totalViolations} total violation${totalViolations !== 1 ? 's' : ''} across ${trades.length} trades.</div>`}
-      </div>
-
-      <div class="card">
-        <div style="font-weight:500;margin-bottom:4px;">Emotion Analytics</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">How your state of mind affects your results — the inner game</div>
-
-        ${(discWin !== null && emoWin !== null) ? `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:${emotionRows.length ? '18px' : '0'};">
-          <div class="card" style="background:var(--bg-success);border:none;">
-            <div style="font-size:12px;color:var(--text-secondary);">🧘 Disciplined trades</div>
-            <div style="font-family:var(--font-mono);font-weight:500;font-size:20px;color:var(--text-success);margin-top:4px;">${discWin}% win</div>
-            <div style="font-size:11px;color:var(--text-muted);">avg ${discAvg >= 0 ? '+' : ''}${discAvg}% · ${discT.length} trades</div>
-          </div>
-          <div class="card" style="background:var(--bg-danger);border:none;">
-            <div style="font-size:12px;color:var(--text-secondary);">😤 Emotional trades</div>
-            <div style="font-family:var(--font-mono);font-weight:500;font-size:20px;color:var(--text-danger);margin-top:4px;">${emoWin}% win</div>
-            <div style="font-size:11px;color:var(--text-muted);">avg ${emoAvg >= 0 ? '+' : ''}${emoAvg}% · ${emoT.length} trades</div>
-          </div>
-        </div>
-        ${(discWin !== null && emoWin !== null && discWin - emoWin >= 10) ? `<div style="font-size:12px;color:var(--gold);margin-bottom:${emotionRows.length ? '18px' : '0'};">💡 You win ${discWin - emoWin} points more often when you trade with discipline. The data is clear.</div>` : ''}
-        ` : ''}
-
-        ${emotionRows.length ? `
-          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">By feeling (from your Trade Stories)</div>
-          <div style="display:flex;flex-direction:column;gap:10px;">
-            ${emotionRows.map(e => `
-              <div style="display:flex;align-items:center;gap:12px;">
-                <div style="font-size:20px;width:28px;text-align:center;flex-shrink:0;">${e.icon}</div>
-                <div style="flex:1;min-width:0;">
-                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-                    <span style="font-size:13px;">${esc(e.label)} <span style="color:var(--text-muted);font-size:11px;">${e.trades}\u00d7</span></span>
-                    <span style="font-family:var(--font-mono);font-size:13px;color:${e.winRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)'};">${e.winRate}% · ${e.avgPnl >= 0 ? '+' : ''}${e.avgPnl}%</span>
-                  </div>
-                  <div style="height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;">
-                    <div style="height:100%;width:${e.winRate}%;background:${e.winRate >= 50 ? 'linear-gradient(90deg,#1f5c33,var(--text-success))' : 'linear-gradient(90deg,var(--text-danger),#7a2020)'};border-radius:3px;"></div>
-                  </div>
-                </div>
-              </div>`).join('')}
-          </div>
-        ` : `<p class="muted" style="font-size:13px;${(discWin !== null) ? 'margin-top:14px;' : ''}">Fill in "What were you feeling?" on your trades (in Log Trade) to unlock emotion-by-feeling insights. ${feelingsLogged}/${trades.length} trades have a feeling logged.</p>`}
-      </div>
-
-      <div class="card">
-        <div style="font-weight:500;margin-bottom:4px;">Profit by Strategy</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Which setups actually make you money — not just which feel good</div>
-        ${stratRows.length === 0 ? `<p class="muted" style="font-size:13px;">Log trades with a strategy filled in to see this breakdown.</p>` : `
-        <div style="display:flex;flex-direction:column;gap:14px;">
-          ${stratRows.map(s => {
-            const pos = s.pnl >= 0;
-            const barPct = Math.round((Math.abs(s.pnl) / maxAbsPnl) * 100);
-            return `
+        <div class="card">
+          <div style="font-weight:500;margin-bottom:4px;">Best Trading Hours</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Win rate by market session — find when you perform best</div>
+          ${sessionRows.length === 0 ? `<p class="muted" style="font-size:13px;">Log trades with times to see this.</p>` : `
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            ${sessionRows.map(s => `
               <div>
-                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
-                  <span style="font-size:13px;font-weight:500;">${esc(s.name)} <span style="color:var(--text-muted);font-size:11px;font-weight:400;">${s.trades} trade${s.trades!==1?'s':''} · ${s.winRate}% win</span></span>
-                  <span style="font-family:var(--font-mono);font-weight:500;font-size:13px;color:${pos ? 'var(--text-success)' : 'var(--text-danger)'};">${pos ? '+' : ''}${s.pnl}%</span>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                  <span style="font-size:13px;">${esc(s.name)} <span style="color:var(--text-muted);font-size:11px;">(${s.count} trade${s.count !== 1 ? 's' : ''})</span></span>
+                  <span style="font-family:var(--font-mono);font-weight:500;font-size:13px;color:${s.winRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)'};">${s.winRate}%</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:0;height:8px;">
-                  <div style="flex:1;display:flex;justify-content:flex-end;">
-                    ${!pos ? `<div style="height:8px;width:${barPct}%;background:linear-gradient(90deg,var(--text-danger),#7a2020);border-radius:4px 0 0 4px;"></div>` : ''}
-                  </div>
-                  <div style="width:1px;height:12px;background:var(--border-strong);"></div>
-                  <div style="flex:1;">
-                    ${pos ? `<div style="height:8px;width:${barPct}%;background:linear-gradient(90deg,#1f5c33,var(--text-success));border-radius:0 4px 4px 0;"></div>` : ''}
-                  </div>
-                </div>
-                <div style="font-size:10px;color:var(--text-muted);margin-top:3px;text-align:right;">avg ${s.avgPnl >= 0 ? '+' : ''}${s.avgPnl}% / trade</div>
-              </div>`;
-          }).join('')}
-        </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:12px;">The center line is breakeven. Bars right = net profit, left = net loss.</div>`}
-      </div>
-
-      <div class="card" style="border-color:var(--gold);background:linear-gradient(135deg, rgba(212,175,55,0.06), var(--surface-1));">
-        <div style="font-weight:500;margin-bottom:4px;">🔍 Hidden Edge Detector</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Conditions where you beat your ${Math.round(baseWinRate)}% baseline win rate. Your real edge.</div>
-        ${trades.length < 8 ? `<p class="muted" style="font-size:13px;">Log at least 8 trades (with instrument, time, strategy & RR filled in) and your edges will start surfacing here.</p>` : edges.length === 0 ? `<p class="muted" style="font-size:13px;">No standout edge detected yet. Keep logging detailed trades — patterns emerge over time.</p>` : `
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          ${edges.map(e => `
-            <div style="display:flex;align-items:center;gap:12px;background:var(--surface-2);border-radius:var(--radius);padding:10px 12px;">
-              <div style="font-family:var(--font-mono);font-weight:500;font-size:20px;color:var(--text-success);width:52px;flex-shrink:0;">${e.winRate}%</div>
-              <div style="flex:1;min-width:0;">
-                <div style="font-size:14px;font-weight:500;">${esc(e.label)}</div>
-                <div style="font-size:11px;color:var(--text-muted);">${e.dimension} &middot; ${e.total} trades &middot; +${Math.round(e.winRate - baseWinRate)} pts vs baseline</div>
-              </div>
-            </div>`).join('')}
-        </div>`}
-        ${leaks.length ? `
-          <div style="margin-top:16px;">
-            <div style="font-size:12px;color:var(--text-danger);font-weight:500;margin-bottom:8px;">⚠ Where you leak</div>
-            ${leaks.map(l => `
-              <div style="display:flex;align-items:center;gap:12px;background:var(--bg-danger);border-radius:var(--radius);padding:8px 12px;margin-bottom:6px;">
-                <div style="font-family:var(--font-mono);font-weight:500;font-size:16px;color:var(--text-danger);width:52px;flex-shrink:0;">${l.winRate}%</div>
-                <div style="flex:1;min-width:0;">
-                  <div style="font-size:13px;">${esc(l.label)}</div>
-                  <div style="font-size:11px;color:var(--text-muted);">${l.dimension} &middot; ${l.total} trades &middot; ${Math.round(baseWinRate - l.winRate)} pts below baseline</div>
+                <div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;">
+                  <div style="height:100%;width:${s.winRate}%;background:linear-gradient(90deg, #8a6d1f, var(--gold));border-radius:4px;transition:width 0.6s ease;"></div>
                 </div>
               </div>`).join('')}
-            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Consider trading these conditions less, or refining your approach to them.</div>
-          </div>` : ''}
+          </div>`}
+        </div>
+        <div class="card">
+          <div style="font-weight:500;margin-bottom:4px;">Profit by Strategy</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Which setups actually make you money — not just which feel good</div>
+          ${stratRows.length === 0 ? `<p class="muted" style="font-size:13px;">Log trades with a strategy filled in to see this breakdown.</p>` : `
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            ${stratRows.map(s => {
+              const pos = s.pnl >= 0;
+              const barPct = Math.round((Math.abs(s.pnl) / maxAbsPnl) * 100);
+              return `
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+                    <span style="font-size:13px;font-weight:500;">${esc(s.name)} <span style="color:var(--text-muted);font-size:11px;font-weight:400;">${s.trades} trade${s.trades!==1?'s':''} · ${s.winRate}% win</span></span>
+                    <span style="font-family:var(--font-mono);font-weight:500;font-size:13px;color:${pos ? 'var(--text-success)' : 'var(--text-danger)'};">${pos ? '+' : ''}${s.pnl}%</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:0;height:8px;">
+                    <div style="flex:1;display:flex;justify-content:flex-end;">
+                      ${!pos ? `<div style="height:8px;width:${barPct}%;background:linear-gradient(90deg,var(--text-danger),#7a2020);border-radius:4px 0 0 4px;"></div>` : ''}
+                    </div>
+                    <div style="width:1px;height:12px;background:var(--border-strong);"></div>
+                    <div style="flex:1;">
+                      ${pos ? `<div style="height:8px;width:${barPct}%;background:linear-gradient(90deg,#1f5c33,var(--text-success));border-radius:0 4px 4px 0;"></div>` : ''}
+                    </div>
+                  </div>
+                  <div style="font-size:10px;color:var(--text-muted);margin-top:3px;text-align:right;">avg ${s.avgPnl >= 0 ? '+' : ''}${s.avgPnl}% / trade</div>
+                </div>`;
+            }).join('')}
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:12px;">The center line is breakeven. Bars right = net profit, left = net loss.</div>`}
+        </div>
+      </div>
+
+      <div class="chart-group" data-group="psychology">
+        <div class="card">
+          <div style="font-weight:500;margin-bottom:4px;">Discipline Trend</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Rolling 5-trade discipline rate</div>
+          <canvas id="discChart" height="120"></canvas>
+        </div>
+        <div class="card">
+          <div style="font-weight:500;margin-bottom:4px;">Emotion Analytics</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">How your state of mind affects your results — the inner game</div>
+          ${(discWin !== null && emoWin !== null) ? `
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:${emotionRows.length ? '18px' : '0'};">
+            <div class="card" style="background:var(--bg-success);border:none;">
+              <div style="font-size:12px;color:var(--text-secondary);">🧘 Disciplined trades</div>
+              <div style="font-family:var(--font-mono);font-weight:500;font-size:20px;color:var(--text-success);margin-top:4px;">${discWin}% win</div>
+              <div style="font-size:11px;color:var(--text-muted);">avg ${discAvg >= 0 ? '+' : ''}${discAvg}% · ${discT.length} trades</div>
+            </div>
+            <div class="card" style="background:var(--bg-danger);border:none;">
+              <div style="font-size:12px;color:var(--text-secondary);">😤 Emotional trades</div>
+              <div style="font-family:var(--font-mono);font-weight:500;font-size:20px;color:var(--text-danger);margin-top:4px;">${emoWin}% win</div>
+              <div style="font-size:11px;color:var(--text-muted);">avg ${emoAvg >= 0 ? '+' : ''}${emoAvg}% · ${emoT.length} trades</div>
+            </div>
+          </div>
+          ${(discWin !== null && emoWin !== null && discWin - emoWin >= 10) ? `<div style="font-size:12px;color:var(--gold);margin-bottom:${emotionRows.length ? '18px' : '0'};">💡 You win ${discWin - emoWin} points more often when you trade with discipline. The data is clear.</div>` : ''}
+          ` : ''}
+          ${emotionRows.length ? `
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">By feeling (from your Trade Stories)</div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              ${emotionRows.map(e => `
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="font-size:20px;width:28px;text-align:center;flex-shrink:0;">${e.icon}</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                      <span style="font-size:13px;">${esc(e.label)} <span style="color:var(--text-muted);font-size:11px;">${e.trades}\u00d7</span></span>
+                      <span style="font-family:var(--font-mono);font-size:13px;color:${e.winRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)'};">${e.winRate}% · ${e.avgPnl >= 0 ? '+' : ''}${e.avgPnl}%</span>
+                    </div>
+                    <div style="height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;">
+                      <div style="height:100%;width:${e.winRate}%;background:${e.winRate >= 50 ? 'linear-gradient(90deg,#1f5c33,var(--text-success))' : 'linear-gradient(90deg,var(--text-danger),#7a2020)'};border-radius:3px;"></div>
+                    </div>
+                  </div>
+                </div>`).join('')}
+            </div>
+          ` : `<p class="muted" style="font-size:13px;${(discWin !== null) ? 'margin-top:14px;' : ''}">Fill in "What were you feeling?" on your trades (in Log Trade) to unlock emotion-by-feeling insights. ${feelingsLogged}/${trades.length} trades have a feeling logged.</p>`}
+        </div>
+        <div class="card">
+          <div style="font-weight:500;margin-bottom:4px;">Rule Violations</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">How often you break each rule — awareness is the first fix</div>
+          ${violationRows.length === 0 ? `<p class="muted" style="font-size:13px;">No rule violations logged. Either flawless discipline or time to start being honest on the log. 💪</p>` : `
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            ${violationRows.map(v => `
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                  <span style="font-size:13px;">⚠ ${esc(v.name)} <span style="color:var(--text-muted);font-size:11px;">(${v.count}\u00d7)</span></span>
+                  <span style="font-family:var(--font-mono);font-weight:500;font-size:13px;color:${v.pct >= 25 ? 'var(--text-danger)' : v.pct >= 10 ? '#fbbf24' : 'var(--text-secondary)'};">${v.pct}%</span>
+                </div>
+                <div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;">
+                  <div style="height:100%;width:${v.pct}%;background:linear-gradient(90deg, #7a2020, var(--text-danger));border-radius:4px;transition:width 0.6s ease;"></div>
+                </div>
+              </div>`).join('')}
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:12px;">${totalViolations} total violation${totalViolations !== 1 ? 's' : ''} across ${trades.length} trades.</div>`}
+        </div>
+      </div>
+
+      <div class="chart-group" data-group="edge">
+        <div class="card">
+          <div style="font-weight:500;margin-bottom:4px;">Weekly Consistency</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Your trades by day of week 🟢 win 🔴 loss</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            ${weekdayRows.map(r => `
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);width:36px;">${r.name}</span>
+                <span style="flex:1;font-size:15px;letter-spacing:1px;word-break:break-all;">${r.dots}</span>
+                <span style="font-family:var(--font-mono);font-size:12px;color:${r.count ? (r.winRate >= 50 ? 'var(--text-success)' : 'var(--text-danger)') : 'var(--text-muted)'};width:54px;text-align:right;">${r.count ? r.winRate + '%' : ''}</span>
+              </div>`).join('')}
+          </div>
+        </div>
+        <div class="card" style="border-color:var(--gold);background:linear-gradient(135deg, rgba(212,175,55,0.06), var(--surface-1));">
+          <div style="font-weight:500;margin-bottom:4px;">🔍 Hidden Edge Detector</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Conditions where you beat your ${Math.round(baseWinRate)}% baseline win rate. Your real edge.</div>
+          ${trades.length < 8 ? `<p class="muted" style="font-size:13px;">Log at least 8 trades (with instrument, time, strategy & RR filled in) and your edges will start surfacing here.</p>` : edges.length === 0 ? `<p class="muted" style="font-size:13px;">No standout edge detected yet. Keep logging detailed trades — patterns emerge over time.</p>` : `
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            ${edges.map(e => `
+              <div style="display:flex;align-items:center;gap:12px;background:var(--surface-2);border-radius:var(--radius);padding:10px 12px;">
+                <div style="font-family:var(--font-mono);font-weight:500;font-size:20px;color:var(--text-success);width:52px;flex-shrink:0;">${e.winRate}%</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:14px;font-weight:500;">${esc(e.label)}</div>
+                  <div style="font-size:11px;color:var(--text-muted);">${e.dimension} &middot; ${e.total} trades &middot; +${Math.round(e.winRate - baseWinRate)} pts vs baseline</div>
+                </div>
+              </div>`).join('')}
+          </div>`}
+          ${leaks.length ? `
+            <div style="margin-top:16px;">
+              <div style="font-size:12px;color:var(--text-danger);font-weight:500;margin-bottom:8px;">⚠ Where you leak</div>
+              ${leaks.map(l => `
+                <div style="display:flex;align-items:center;gap:12px;background:var(--bg-danger);border-radius:var(--radius);padding:8px 12px;margin-bottom:6px;">
+                  <div style="font-family:var(--font-mono);font-weight:500;font-size:16px;color:var(--text-danger);width:52px;flex-shrink:0;">${l.winRate}%</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-size:13px;">${esc(l.label)}</div>
+                    <div style="font-size:11px;color:var(--text-muted);">${l.dimension} &middot; ${l.total} trades &middot; ${Math.round(baseWinRate - l.winRate)} pts below baseline</div>
+                  </div>
+                </div>`).join('')}
+              <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Consider trading these conditions less, or refining your approach to them.</div>
+            </div>` : ''}
+        </div>
       </div>
 
     </div>`;
+
+  const seg = document.getElementById('chartSeg');
+  if (seg) {
+    seg.querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => {
+        seg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        container.querySelectorAll('.chart-group').forEach(g => {
+          g.classList.toggle('active', g.dataset.group === btn.dataset.cg);
+        });
+        // Charts rendered while hidden need a resize once visible
+        setTimeout(() => {
+          try {
+            if (btn.dataset.cg === 'overview' && typeof _equityChart !== 'undefined') _equityChart.resize();
+            if (btn.dataset.cg === 'performance' && typeof _winChart !== 'undefined') _winChart.resize();
+            if (btn.dataset.cg === 'psychology' && typeof _discChart !== 'undefined') _discChart.resize();
+          } catch (e) {}
+        }, 30);
+      };
+    });
+  }
 
   const gold = '#d4af37';
   const green = '#4ade80';
@@ -3016,7 +3059,7 @@ function renderCharts(container, trades) {
   });
 
   // Equity chart — color line green or red based on final value
-  new Chart(document.getElementById('equityChart'), {
+  const _equityChart = new Chart(document.getElementById('equityChart'), {
     type: 'line',
     data: {
       labels: equityLabels,
@@ -3035,7 +3078,7 @@ function renderCharts(container, trades) {
   });
 
   // Win rate chart
-  new Chart(document.getElementById('winChart'), {
+  const _winChart = new Chart(document.getElementById('winChart'), {
     type: 'line',
     data: {
       labels: winRateLabels,
@@ -3060,7 +3103,7 @@ function renderCharts(container, trades) {
   });
 
   // Discipline chart
-  new Chart(document.getElementById('discChart'), {
+  const _discChart = new Chart(document.getElementById('discChart'), {
     type: 'line',
     data: {
       labels: discLabels,
