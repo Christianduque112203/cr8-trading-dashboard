@@ -1294,6 +1294,61 @@ async function loadLoginWidgets() {
   el.innerHTML = fgHtml + priceHtml;
 }
 
+function renderTerms() {
+  stopLiveTicker();
+  stopStatusBar();
+  if (_marketInterval) { clearInterval(_marketInterval); _marketInterval = null; }
+  stopCryptoTicker();
+  if (_fearGreedInterval) { clearInterval(_fearGreedInterval); _fearGreedInterval = null; }
+  stopQuoteWidget();
+  stopMarketPulse();
+  stopClassPulse();
+  const pwL = document.getElementById('priceWallLeft'); if (pwL) pwL.innerHTML = '';
+  const pwR = document.getElementById('priceWallRight'); if (pwR) pwR.innerHTML = '';
+  document.body.classList.remove('has-header-ticker');
+  const ht = document.getElementById('header-ticker'); if (ht) ht.innerHTML = '';
+  const ms = document.getElementById('market-sidebar'); if (ms) ms.innerHTML = '';
+  const mp = document.getElementById('mid-panel'); if (mp) mp.innerHTML = '';
+  const sn = document.getElementById('side-nav'); if (sn) sn.innerHTML = '';
+
+  app.innerHTML = `
+    <div class="fade-in" style="max-width:640px;margin:32px auto;">
+      <div style="text-align:center;margin-bottom:1.5rem;">
+        <div class="brand-mark">CR8 TRADING</div>
+        <h2 style="margin-top:4px;">Terms of Use &amp; Educational Disclaimer</h2>
+      </div>
+
+      <div class="card" style="line-height:1.7;font-size:14px;color:var(--text-secondary);">
+
+        <h3 style="color:var(--gold);font-size:15px;margin-bottom:8px;">1. Educational Purpose Only</h3>
+        <p style="margin-bottom:16px;">CR8 Trading Journal is a personal trade-tracking and journaling tool built for the educational benefit of CR8 Trading's students and mentorship community. It is designed to help traders record, reflect on, and improve their own trading process. Nothing in this application — including but not limited to trade statistics, rank progression, leaderboard standing, badges, the Institutional Pulse panel, Market Pulse data, Fear &amp; Greed index, sentiment indicators, or any other feature — constitutes financial, investment, legal, or tax advice.</p>
+
+        <h3 style="color:var(--gold);font-size:15px;margin-bottom:8px;">2. No Trading Recommendations</h3>
+        <p style="margin-bottom:16px;">This platform does not recommend, endorse, or advise for or against any specific trade, position, instrument, or strategy. Any market data, momentum indicators, or contextual information shown is provided purely for informational and educational purposes. All trading decisions are made solely at your own discretion and risk.</p>
+
+        <h3 style="color:var(--gold);font-size:15px;margin-bottom:8px;">3. Risk Disclosure</h3>
+        <p style="margin-bottom:16px;">Trading financial instruments, including but not limited to forex, cryptocurrency, equities, and derivatives, involves substantial risk of loss and is not suitable for all individuals. Past performance — whether your own historical results shown in this app, or general market data — does not guarantee or indicate future results. You should never trade with money you cannot afford to lose, and you should independently assess your own financial situation and risk tolerance, or consult a licensed financial advisor, before making any trading decisions.</p>
+
+        <h3 style="color:var(--gold);font-size:15px;margin-bottom:8px;">4. Self-Reported Data</h3>
+        <p style="margin-bottom:16px;">All trade data, capital figures, and statistics within this application are self-reported by individual students. CR8 Trading does not verify, audit, or guarantee the accuracy of any user-submitted information, including the "CR8 Total Real-Time Capital" figure or any individual trader's reported account size.</p>
+
+        <h3 style="color:var(--gold);font-size:15px;margin-bottom:8px;">5. Third-Party Market Data</h3>
+        <p style="margin-bottom:16px;">Live market data (including cryptocurrency prices, the Fear &amp; Greed Index, trending assets, and global market statistics) is sourced from third-party public data providers. CR8 Trading makes no warranty as to the accuracy, completeness, or timeliness of this data and is not responsible for any decisions made based on it.</p>
+
+        <h3 style="color:var(--gold);font-size:15px;margin-bottom:8px;">6. No Liability</h3>
+        <p style="margin-bottom:16px;">CR8 Trading, its mentors, and affiliates accept no liability for any losses, damages, or consequences — direct or indirect — arising from the use of this application or reliance on any information presented within it. Use of this platform is entirely at your own risk.</p>
+
+        <h3 style="color:var(--gold);font-size:15px;margin-bottom:8px;">7. Acceptance</h3>
+        <p style="margin-bottom:0;">By using CR8 Trading Journal, you acknowledge that you have read, understood, and agree to this disclaimer, and that you are using this platform for personal educational and journaling purposes only.</p>
+
+      </div>
+
+      <button id="backToLoginBtn" style="width:100%;margin-top:20px;">&larr; Back to log in</button>
+    </div>`;
+
+  document.getElementById('backToLoginBtn').onclick = () => renderLogin();
+}
+
 function renderLogin() {
   stopLiveTicker();
   stopStatusBar();
@@ -1345,7 +1400,10 @@ function renderLogin() {
 
       <p style="text-align:center;margin-top:24px;"><a href="#" id="adminLink" style="font-size:12px;color:var(--text-muted);text-decoration:none;">Mentor admin</a></p>
       <p style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:16px;">Trading involves risk. Past performance does not guarantee future results.</p>
+      <p style="text-align:center;font-size:11px;margin-top:6px;"><a href="#" id="termsLink" style="color:var(--text-muted);text-decoration:underline;">Terms of Use &amp; Educational Disclaimer</a></p>
     </div>`;
+
+  document.getElementById('termsLink').onclick = (e) => { e.preventDefault(); renderTerms(); };
 
   loadLoginStats();
   loadLoginWidgets();
