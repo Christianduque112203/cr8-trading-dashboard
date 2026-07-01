@@ -994,6 +994,7 @@ function renderLogin() {
   stopLiveTicker();
   if (_marketInterval) { clearInterval(_marketInterval); _marketInterval = null; }
   stopCryptoTicker();
+  if (_fearGreedInterval) { clearInterval(_fearGreedInterval); _fearGreedInterval = null; }
   const ms = document.getElementById('market-sidebar');
   if (ms) ms.innerHTML = '';
   const sn = document.getElementById('side-nav');
@@ -3768,6 +3769,53 @@ let _cryptoInterval = null;
 const CRYPTO_IDS = ['bitcoin', 'ethereum', 'solana', 'binancecoin', 'ripple'];
 const CRYPTO_SYMBOLS = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', binancecoin: 'BNB', ripple: 'XRP' };
 
+// Crypto Fear & Greed Index (alternative.me public API — no key required)
+let _fearGreed = null;
+let _fearGreedInterval = null;
+
+async function fetchFearGreed() {
+  try {
+    const res = await fetch('https://api.alternative.me/fng/?limit=1');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.data && data.data[0]) {
+      _fearGreed = { value: parseInt(data.data[0].value, 10), label: data.data[0].value_classification };
+      renderMarketSidebar();
+    }
+  } catch (e) { /* offline — keep last known value */ }
+}
+
+function fearGreedColor(v) {
+  if (v <= 24) return '#f87171';       // Extreme Fear - red
+  if (v <= 44) return '#fb923c';       // Fear - orange
+  if (v <= 55) return '#fbbf24';       // Neutral - yellow
+  if (v <= 75) return '#a3e635';       // Greed - lime
+  return '#4ade80';                    // Extreme Greed - green
+}
+
+function fearGreedHTML() {
+  if (!_fearGreed) {
+    return `<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:8px 0;">Loading…</div>`;
+  }
+  const v = _fearGreed.value;
+  const color = fearGreedColor(v);
+  // Semi-circle gauge via conic-gradient, needle rotated to value
+  const angle = (v / 100) * 180 - 90; // -90deg (0) to +90deg (100)
+  return `
+    <div style="display:flex;flex-direction:column;align-items:center;">
+      <div style="position:relative;width:120px;height:64px;overflow:hidden;">
+        <div style="position:absolute;top:0;left:0;width:120px;height:120px;border-radius:50%;
+          background:conic-gradient(from 180deg, #f87171 0deg, #fb923c 45deg, #fbbf24 90deg, #a3e635 135deg, #4ade80 180deg, transparent 180deg);
+          -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 14px));
+          mask:radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 14px));"></div>
+        <div style="position:absolute;bottom:0;left:60px;width:2px;height:48px;background:var(--text-primary);transform-origin:bottom center;transform:rotate(${angle}deg);box-shadow:0 0 4px rgba(255,255,255,0.5);"></div>
+        <div style="position:absolute;bottom:-4px;left:56px;width:8px;height:8px;border-radius:50%;background:var(--text-primary);"></div>
+      </div>
+      <div style="font-family:var(--font-mono);font-weight:600;font-size:24px;color:${color};margin-top:4px;">${v}</div>
+      <div style="font-size:12px;color:${color};font-weight:500;">${esc(_fearGreed.label)}</div>
+    </div>`;
+}
+
 async function fetchCryptoPrices() {
   try {
     const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${CRYPTO_IDS.join(',')}&vs_currencies=usd&include_24hr_change=true`);
@@ -3846,6 +3894,10 @@ function renderMarketSidebar() {
           </span>
         </div>`).join('')}
     </div>
+    <div class="card" style="margin-bottom:10px;">
+      <div class="brand-mark" style="margin-bottom:10px;">FEAR &amp; GREED</div>
+      ${fearGreedHTML()}
+    </div>
     <div class="card">
       <div class="brand-mark" style="margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span class="live-dot" style="width:5px;height:5px;"></span>LIVE PRICES</div>
       ${cryptoTickerHTML()}
@@ -3857,6 +3909,9 @@ function startMarketClock() {
   if (_marketInterval) clearInterval(_marketInterval);
   _marketInterval = setInterval(renderMarketSidebar, 1000);
   startCryptoTicker();
+  if (!_fearGreed) fetchFearGreed();
+  if (_fearGreedInterval) clearInterval(_fearGreedInterval);
+  _fearGreedInterval = setInterval(fetchFearGreed, 60 * 60 * 1000); // hourly — index updates daily
 }
 
 function setupBackgroundFX() {
